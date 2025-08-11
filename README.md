@@ -17,9 +17,12 @@ Chrome、Firefox
 # 最新版本
 
 Ver.1.3.1.9
-[說明文件](https://hypnotic-denim-05e.notion.site/CoCo-Translate-175cbce1913780ca8efbf2267976a0a7?pvs=74)
+[原始說明文件（含圖片）](https://hypnotic-denim-05e.notion.site/CoCo-Translate-175cbce1913780ca8efbf2267976a0a7?pvs=74)
+
 [更新日記](https://www.notion.so/176cbce1913780eba254f6b0d9b6638b?pvs=21)
+
 [歷史版本](https://www.notion.so/192cbce19137803bb478e47ac589d5a1?pvs=21)
+
 [清除快取](https://www.notion.so/1a1cbce1913780f7b850c0592ae7a0b9?pvs=21)
 
 # 安裝方式
@@ -150,10 +153,6 @@ Ver.1.3.1.9
 17. **Restore Page：**
 還原顯示整個網頁的原文。
 
-![圖片.png](attachment:63f82fd3-4a65-4883-9b74-3edbc6badf77:圖片.png)
-
-![圖片.png](attachment:c76778d5-1d24-4ad5-8c0a-8549fb96a56c:圖片.png)
-
 ### 彈出視窗：編輯正規表達式
 
 1. **Add New Pattern：**
@@ -177,8 +176,6 @@ Ver.1.3.1.9
 ※Firefox受限於瀏覽器功能，點擊Import後會開啟Options頁面，請於該頁面匯入檔案。
 
 </aside>
-
-![圖片.png](attachment:26901cb4-c107-462a-8c25-5949c5df8179:圖片.png)
 
 ### API設定
 
@@ -234,8 +231,6 @@ Ver.1.3.1.9
 ※使用AI翻譯時，請先了解LLM可能會不聽指示。也就是說，**譯文可能會跑出奇怪的回應或出現其他外語。**
 
 </aside>
-
-![圖片.png](attachment:50f3898f-d1b7-458c-b32b-ba832ea81bca:圖片.png)
 
 ### 預設右鍵選單／自訂右鍵選單
 
@@ -326,8 +321,6 @@ Ver.1.3.1.9
     4. 翻譯鍵：點擊後翻譯輸入文字。
 3. **關閉欄位：**
 點擊輸入框、翻譯框、翻譯鍵及複製鍵外的任意處。
-
-![圖片.png](attachment:75123ee9-0554-4246-8df0-fc7e1ff4aab9:圖片.png)
 
 # 已知BUG
 

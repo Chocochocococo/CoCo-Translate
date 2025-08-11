@@ -1,0 +1,34 @@
+{
+  "manifest_version": 3,
+  "name": "CoCo Translate",
+  "version": "1.3.1.9",
+  "description": "Hover Translation",
+  "homepage_url": "https://hypnotic-denim-05e.notion.site/CoCo-Translate-175cbce1913780ca8efbf2267976a0a7",
+  "permissions": ["storage", "activeTab", "contextMenus","tabs"],
+  "host_permissions": ["<all_urls>"],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "icons/*.png",
+        "icons/loading.gif",
+        "popup.css"
+      ],
+      "matches": ["<all_urls>"]
+    }
+  ],
+  "background": { "service_worker": "background.js" },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["translationCache.js", "popup.js", "translator.js", "content.js", "language.js"],
+      "run_at": "document_end",
+      "all_frames": true
+    }
+  ],
+  "action": {
+    "default_icon": { "48": "icons/icon-48.png" },
+    "default_title": "CoCo Translate",
+    "default_popup": "popup.html"
+  },
+  "icons": { "48": "icons/icon-48.png" }
+}

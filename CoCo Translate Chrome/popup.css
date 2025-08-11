@@ -1,0 +1,302 @@
+/* 重新設計的 Popup CSS - 幹，這版讓你一次看全所有設定 */
+body {
+  font-family: Arial, sans-serif; /* 幹，看這字體清爽 */
+  margin: 0; /* 他媽的，邊距設零，免得亂跑 */
+  padding: 10px; /* 靠北，內距調整得剛剛好 */
+  background-color: #f9f9f9; /* 幹，背景色溫柔又舒服 */
+  color: #333; /* 他媽的，字色夠清楚 */
+  width: 450px; /* 靠北，固定寬度讓人安心 */
+  height: 600px; /* 幹，自動高度，讓你一次看夠，滾條滾蛋！ */
+  box-sizing: border-box; /* 他媽的，盒模型正確計算 */
+  overflow: visible; /* 靠北，不允許那該死的滾動條出現 */
+}
+
+.container {
+  display: flex; /* 幹，用彈性盒子排版 */
+  flex-direction: column; /* 他媽的，垂直排列比較清爽 */
+  gap: 10px; /* 靠北，元素間距縮小點，空間利用最大化 */
+}
+
+.title {
+  font-size: 18px; /* 幹，標題字體縮小點，節省空間 */
+  color: #2c3e50; /* 他媽的，這顏色看著專業 */
+  margin-bottom: 5px; /* 靠北，留點下間距 */
+  text-align: center; /* 幹，居中排版，夠潮 */
+}
+
+/* 輸入框與標籤樣式 */
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-top: 10px; /* 幹，每個區塊間隔調整 */
+}
+
+.label {
+  font-weight: bold;
+  font-size: 14px;
+  cursor: pointer; /* 他媽的，標籤也能點，幹 */
+}
+
+.input {
+  padding: 6px; /* 靠北，內距縮小，省空間 */
+  font-size: 13px; /* 幹，字體稍微縮小點 */
+  border: 1px solid #ddd; /* 他媽的，邊框簡潔 */
+  border-radius: 4px;
+  width: 180px;
+  box-sizing: border-box; /* 靠北，保持盒模型完整 */
+}
+
+.input2 {
+  padding: 6px; /* 靠北，內距縮小，省空間 */
+  font-size: 13px; /* 幹，字體稍微縮小點 */
+  border: 1px solid #ddd; /* 他媽的，邊框簡潔 */
+  border-radius: 4px;
+  width: 200px;
+  box-sizing: border-box; /* 靠北，保持盒模型完整 */
+}
+
+.input-large {
+  padding: 6px; /* 靠北，內距縮小，省空間 */
+  font-size: 13px; /* 幹，字體稍微縮小點 */
+  border: 1px solid #ddd; /* 他媽的，邊框簡潔 */
+  border-radius: 4px;
+  width: 300px;
+  box-sizing: border-box; /* 靠北，保持盒模型完整 */
+}
+
+.input-small {
+  padding: 6px; /* 靠北，內距縮小，省空間 */
+  font-size: 13px; /* 幹，字體稍微縮小點 */
+  border: 1px solid #ddd; /* 他媽的，邊框簡潔 */
+  border-radius: 4px;
+  width: 120px;
+  box-sizing: border-box; /* 靠北，保持盒模型完整 */
+}
+
+/* 讓選項並排的容器 */
+.inline-section {
+  display: flex;
+  justify-content: flex-start;
+  gap: 10px; /* 幹，間距調整得更緊湊 */
+  align-items: center;
+  flex-direction: row;
+  margin-left: 10px;
+}
+
+.inline-section2 {
+  display: flex;
+  justify-content: space-around;
+  gap: 5px; /* 幹，間距調整得更緊湊 */
+  align-items: center;
+  flex-direction: row;
+  margin-left: 5px;
+}
+
+/* 每個欄位 */
+.column {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.column label {
+  font-size: 14px;
+  font-weight: bold;
+}
+
+.column select {
+  padding: 6px; /* 他媽的，跟 input 一樣內距 */
+  font-size: 13px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  width: 200px;
+  box-sizing: border-box;
+}
+
+/* 按鈕樣式 */
+.buttons {
+  display: flex;
+  gap: 10px; /* 幹，按鈕間隔縮小點 */
+  margin-top: 10px;
+}
+
+.buttons2 {
+  display: flex;
+  gap: 10px; /* 幹，按鈕間隔縮小點 */
+  margin-top: 3px;
+}
+
+.btn {
+  padding: 8px; /* 他媽的，按鈕內距調小 */
+  font-size: 13px; /* 靠北，字體縮小點 */
+  color: white;
+  background-color: #3498db;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  text-align: center;
+  flex: 1;
+}
+
+.btn.secondary {
+  background-color: #95a5a6;
+}
+
+.btn.full-width {
+  width: 100%;
+}
+
+/* Modal 樣式 */
+.modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.modal-title {
+  font-size: 16px; /* 幹，標題字體縮小 */
+  font-weight: bold;
+  text-align: center;
+  margin-bottom: 15px;
+  color: #2c3e50;
+}
+
+.modal-content {
+  background: #fff;
+  padding: 20px; /* 他媽的，內距稍微減少 */
+  border-radius: 8px;
+  width: 400px;
+  max-height: none; /* 靠北，不限制高度 */
+  overflow: visible; /* 幹，直接顯示全部內容 */
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.hidden {
+  display: none;
+}
+
+.pattern-list {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  margin-bottom:5px;
+  margin-top: 5px;
+}
+
+.pattern-header {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  font-weight: bold;
+  font-size: 14px;
+  border-bottom: 1px solid #ddd;
+  padding-bottom: 5px;
+}
+
+.pattern-enabled-header {
+  flex: 0 0 40px; /* 縮小勾選框的列寬 */
+  text-align: left;
+}
+
+.pattern-input-header {
+  flex: 1;
+}
+
+.pattern-output-header {
+  flex: 1;
+}
+
+.pattern-action-header {
+  flex: 0 0 60px; /* 刪除按鈕的列寬 */
+}
+
+.pattern-item {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+}
+
+.pattern-item input[type="checkbox"] {
+  flex: 0 0 40px; /* 控制勾選框寬度 */
+  margin: 0 auto;
+}
+
+.pattern-item .pattern-input {
+  flex: 1;
+  padding: 5px;
+  font-size: 14px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  width: 45%;
+}
+
+.pattern-item .pattern-output {
+  flex: 1;
+  padding: 5px;
+  font-size: 14px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  width: 45%;
+}
+
+.pattern-item button {
+  flex: 0 0 60px; /* 控制刪除按鈕寬度 */
+  padding: 5px 10px;
+  background-color: #e74c3c;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+/* Tab 切換區塊 */
+.tab-buttons {
+  display: flex;
+  border-bottom: 1px solid #ccc;
+  margin-bottom: 5px;
+}
+
+.tab-buttons button {
+  flex: 1;
+  background-color: #f9f9f9;
+  border: none;
+  padding: 8px; /* 他媽的，內距也調小 */
+  font-size: 14px;
+  cursor: pointer;
+  text-align: center;
+  outline: none;
+  color: #2c3e50;
+}
+
+.tab-buttons button.active {
+  border-bottom: 3px solid #3498db;
+  font-weight: bold;
+}
+
+/* Tab 內容 */
+.tab-content {
+  display: none;
+}
+
+.tab-content.active {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+#regexListContainer {
+  max-height: 400px;
+  overflow-y: auto;
+  padding-right: 5px;
+}

@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>CoCo Translate Settings</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <div class="tab-buttons">
+      <button id="tabGeneral" class="active">Settings</button>
+      <button id="tabRegex">Edit Regex Patterns</button>
+      <button id="tabAPI">API Settings</button>
+    </div>
+    
+    <!-- 一般設定分頁 -->
+    <div id="contentGeneral" class="tab-content active">
+      <div class="section">
+        <label id="uiLanguageLabel" for="languageSelector">UI Language:</label>
+        <select id="languageSelector">
+          <option value="en">English</option>
+          <option value="zh">中文</option>
+        </select>
+        <label class="label">
+          <input type="checkbox" id="alwaysTranslateCheckbox" class="input-checkbox">
+          <span id="alwaysTranslateLabel">Always translate this site</span>
+        </label>
+        <label class="label">
+          <input type="checkbox" id="showOriginalTooltip" class="input-checkbox">
+          <span id="showOriginalTooltipLabel">Show Original Text Tooltip in Page Translate</span>
+        </label>
+        <label class="label">
+          <input type="checkbox" id="enableFloatingButton" class="input-checkbox">
+          <span id="enableFloatingButtonLabel">Enable Input Translate Button</span>
+        </label>
+        <label class="label">
+          <input type="checkbox" id="enableSelectionButton" class="input-checkbox">
+          <span id="enableSelectionButtonLabel">Enable Selection Translation Button</span>
+        </label>
+        <label class="label">
+          <input type="checkbox" id="enableCustomRegex" class="input-checkbox" checked>
+          <span id="enableCustomRegexLabel">Enable Custom Regex</span>
+        </label>
+        <label class="label">
+          <input type="checkbox" id="useDiskCache" class="input-checkbox">
+          <span id="useDiskCacheLabel">Enable local cached translation</span>
+        </label>
+      </div>  
+      <div class="section inline-section">
+        <div class="column">
+          <label id="translationSourceLabel" for="translationSource">Translation Source:</label>
+          <button id="openApiModalBtn" class="btn" style="width:200px; font-size: 14px; color: black; background-color: white; text-align: left; border: 1px solid #d5d5d5;">Click to open settings</button>
+        </div>
+        <div class="column">
+          <label id="contextMenuLabel" for="radio">Context Menu:</label>
+          <select id="radio" name="contextMenuMode" class="input">
+            <option value="1">CoCo Menu</option>
+            <option value="2">Both Menu</option>
+            <option value="3">Default Menu</option>
+          </select>
+        </div>
+      </div>
+      <div class="section inline-section">
+        <div class="column">
+          <label id="targetLanguageLabel" for="targetLanguage">Target Language:</label>
+          <select id="targetLanguage" class="input">
+            <option value="zh-TW">zh-TW</option>
+            <option value="en">EN</option>
+            <option value="ja">JA</option>
+            <option value="ko">KO</option>
+          </select>
+        </div>
+        <div class="column">
+          <label id="inputTargetLanguageLabel" for="inputTargetLanguage">Input Target Language:</label>
+          <select id="inputTargetLanguage" class="input">
+            <option value="en">EN</option>
+            <option value="zh-TW">zh-TW</option>
+            <option value="ja">JA</option>
+            <option value="ko">KO</option>
+          </select>
+        </div>
+      </div>
+      <div class="section inline-section">
+        <div class="column">
+          <label id="triggerKeyLabel" for="triggerKey" class="label">Trigger Key:</label>
+          <input type="text" id="triggerKey" class="input2" placeholder="Press a key to set trigger">
+        </div>
+        <div class="column">
+          <label id="toggleTranslationLabel" for="toggleTranslation" class="label">Enable Trigger:</label>
+          <select id="toggleTranslation" class="input">
+            <option value="true">ON</option>
+            <option value="false">OFF</option>
+          </select>
+        </div>
+      </div>
+      <div class="buttons">
+        <button id="saveBtn" class="btn">Save Settings</button>
+        <button id="clearBtn" class="btn secondary">Clear Triggered</button>
+      </div>
+      <div class="buttons">
+        <button id="translatePageBtn" class="btn">Translate Page</button>
+        <button id="restorePageBtn" class="btn secondary">Restore Page</button>
+      </div>
+    </div>
+    
+    <!-- 正規表達式編輯器分頁 -->
+    <div id="contentRegex" class="tab-content">
+      <div id="regexListContainer">
+        <div id="modalPatternList" class="pattern-list"></div>
+      </div>
+      <button id="addPatternBtn" class="btn">Add New Pattern</button>
+      <div class="buttons">
+        <button id="exportRegex" class="btn">Export</button>
+        <input id="importRegexFile" type="file" accept=".json" class="hidden">
+        <button id="importRegex" class="btn">Import</button>
+      </div>
+    </div>
+    
+    <!-- API Settings 分頁 -->
+    <div id="contentAPI" class="tab-content">
+      <div class="section inline-section2">
+        <label id= "googleApiKeyNAME" for="googleApiKey">Cloud API Key:</label>
+        <input type="password" id="googleApiKey" class="input" placeholder="Enter your Cloud API key">
+        <div class="buttons2">
+          <button id="saveApiKeyBtn" class="btn">Save</button>
+          <button id="deleteApiKeyBtn" class="btn secondary">Delete</button>
+        </div>
+      </div>
+      <div class="section inline-section2">
+        <label  id="deepLApiKeyNAME" for="deepLApiKey">DeepL API Key:</label>
+        <input type="password" id="deepLApiKey" class="input" placeholder="Enter your DeepL API key">
+        <div class="buttons2">
+          <button id="saveDeepLApiKeyBtn" class="btn">Save API Key</button>
+          <button id="deleteDeepLApiKeyBtn" class="btn secondary">Delete API Key</button>
+        </div>
+      </div>
+      <div class="section inline-section2">
+        <label id="mistralApiKeyNAME" for="mistralApiKey">Mistral API Key:</label>
+        <input type="password" id="mistralApiKey" class="input" placeholder="Enter your Mistral API key">
+        <div class="buttons2">
+          <button id="saveMistralApiKeyBtn" class="btn">Save API Key</button>
+          <button id="deleteMistralApiKeyBtn" class="btn secondary">Delete API Key</button>
+        </div>
+      </div>
+      <div class="section inline-section">
+        <label id="deepLAccountTypelabel" for="deepLAccountType">DeepL Account Type:</label>
+        <select id="deepLAccountType" class="input">
+          <option value="free">Free</option>
+          <option value="pro">Pro (Subscription)</option>
+        </select>
+      </div>
+      <!-- 新增自訂 prompt 區塊 -->
+      <div class="section">
+        <div class="section inline-section">
+        <label id="promptNametitle" for="promptName">Prompt Name:</label>
+        <input type="text" id="promptName" class="input2" placeholder="Enter prompt name">
+        <div class="buttons2">
+          <button id="saveCustomPromptBtn" class="btn">Save Prompt</button>
+        </div>
+        </div>
+        <div class="section inline-section">
+        <label id="customPrompttitle" for="customPrompt">Custom Prompt:</label>
+        <textarea id="customPrompt" class="input-large" placeholder="Enter your custom translation prompt"></textarea>
+        </div>
+        <div class="section inline-section">
+        <label id="promptSelecttitle" for="promptSelect">Select Prompt:</label>
+        <select id="promptSelect" class="input2"></select>
+        <div class="buttons2">
+          <button id="deleteCustomPromptBtn" class="btn secondary">Delete Prompt</button>
+        </div>
+       </div>
+      </div>
+      <div class="buttons">
+        <button id="clearCacheBtn" class="btn secondary">How to Clear Cached Translations</button>
+        <!-- <button id="editTranslationsBtn" class="btn">Edit Stored Translations</button> -->
+      </div>
+      <div class="section">
+        <p id="cacheSizeDisplay" style="margin-top: 10px; font-weight: bold;">
+          Cache Size: Calculating...
+        </p>
+      </div>
+    </div>
+  </div>
+  <script src="language.js"></script>
+  <script src="translationCache.js"></script>
+  <script src="translator.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>

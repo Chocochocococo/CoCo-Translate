@@ -38,8 +38,10 @@ const i18nStrings = {
       shortcutLabelID: "Shortcut:",
       manageSitesBtnID: "Manage sites",
       openGlossaryBtnID: "Glossary",
-      enableYouTubeSubtitlesLabelID: "YouTube bilingual subtitles",
-      enableYouTubeSubtitlesHintID: "Turn on CC in the video. Uses the page translation source.",
+      enableYouTubeSubtitlesLabelID: "YouTube subtitles",
+      enableYouTubeSubtitlesHintID: "Turn on CC in the video. YouTube's captions are replaced by one box; drag it like the original captions. Uses the page translation source.",
+      youTubeModeBilingual: "Bilingual",
+      youTubeModeTranslation: "Translation",
       openVocabularyBtnID: "Vocabulary",
       navVocabularyID: "Vocabulary",
       vocabularyTitleID: "Vocabulary",
@@ -126,8 +128,10 @@ const i18nStrings = {
       shortcutLabelID: "快捷鍵：",
       manageSitesBtnID: "管理網站清單",
       openGlossaryBtnID: "術語表",
-      enableYouTubeSubtitlesLabelID: "YouTube 雙語字幕",
-      enableYouTubeSubtitlesHintID: "影片要開啟 CC 字幕，使用整頁翻譯的翻譯來源。",
+      enableYouTubeSubtitlesLabelID: "YouTube 字幕翻譯",
+      enableYouTubeSubtitlesHintID: "影片要開啟 CC 字幕。原本的字幕會換成一個字幕框，可以像原字幕一樣拖曳位置。使用整頁翻譯的翻譯來源。",
+      youTubeModeBilingual: "雙語",
+      youTubeModeTranslation: "只譯文",
       openVocabularyBtnID: "生字本",
       navVocabularyID: "生字本",
       vocabularyTitleID: "生字本",
@@ -195,6 +199,10 @@ const i18nStrings = {
     // 空間不夠寫「要開啟 CC 字幕」，改成滑鼠移上去的提示
     const youTubeOption = document.getElementById('enableYouTubeSubtitles')?.closest('label');
     if (youTubeOption) youTubeOption.title = dict.enableYouTubeSubtitlesHintID;
+    const optYouTubeBilingual = document.querySelector('#youTubeSubtitleMode option[value="bilingual"]');
+    const optYouTubeTranslation = document.querySelector('#youTubeSubtitleMode option[value="translation"]');
+    if (optYouTubeBilingual) optYouTubeBilingual.textContent = dict.youTubeModeBilingual;
+    if (optYouTubeTranslation) optYouTubeTranslation.textContent = dict.youTubeModeTranslation;
     setText("openVocabularyBtn", dict.openVocabularyBtnID);
     setText("navVocabulary", dict.navVocabularyID);
     setText("vocabularyTitle", dict.vocabularyTitleID);

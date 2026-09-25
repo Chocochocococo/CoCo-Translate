@@ -517,14 +517,23 @@ try {
     assert.equal(await yt.locator('#coco-yt-subtitle').count(), 0);
   });
   await sw.evaluate(() => chrome.storage.local.set({ enableYouTubeSubtitles: true }));
-  await check('YouTube 字幕：開啟後在原字幕上方顯示譯文', async () => {
-    await yt.waitForFunction(() => document.querySelector('#coco-yt-subtitle')?.textContent === '[譯]Hello everyone', null, { timeout: 3000 });
+  await check('YouTube 字幕：原本的 CC 變透明，換成一個字幕框（原文＋譯文）', async () => {
+    await yt.waitForFunction(() => document.querySelector('#coco-yt-subtitle .coco-yt-translated')?.textContent === '[譯]Hello everyone', null, { timeout: 3000 });
+    assert.equal(await yt.textContent('#coco-yt-subtitle .coco-yt-original'), 'Hello everyone');
+    assert.equal(await yt.evaluate(() => getComputedStyle(document.querySelector('.ytp-caption-window-container')).opacity), '0');
     assert.equal(await yt.evaluate(() => getComputedStyle(document.querySelector('#coco-yt-subtitle')).fontSize), '20px');
-    const [overlayBottom, captionTop] = await yt.evaluate(() => [
-      document.querySelector('#coco-yt-subtitle').getBoundingClientRect().bottom,
-      document.querySelector('.caption-window').getBoundingClientRect().top
-    ]);
-    assert.ok(overlayBottom <= captionTop, '譯文要在原字幕上方');
+  });
+  await check('YouTube 字幕：字幕框放在原本 CC 的位置，拖曳 CC 會跟著移動', async () => {
+    const aligned = () => yt.evaluate(() => {
+      const box = document.querySelector('#coco-yt-subtitle').getBoundingClientRect();
+      const caption = document.querySelector('.caption-window').getBoundingClientRect();
+      return Math.abs(box.bottom - caption.bottom) < 2 && Math.abs((box.left + box.right) / 2 - (caption.left + caption.right) / 2) < 2;
+    });
+    assert.ok(await aligned(), '字幕框要對齊原本 CC 的位置');
+    await yt.evaluate(() => { document.querySelector('.caption-window').style.bottom = '200px'; });   // 模擬使用者把 CC 拖上去
+    await yt.waitForTimeout(200);
+    assert.ok(await aligned(), '拖曳後要跟著移動');
+    await yt.evaluate(() => { document.querySelector('.caption-window').style.bottom = '20px'; });
   });
   const beforeRolling = llmRequests.length;
   for (const partial of ['Today we', 'Today we will', 'Today we will learn', 'Today we will learn about', 'Today we will learn about foxes']) {
@@ -532,18 +541,33 @@ try {
     await yt.waitForTimeout(120);
   }
   await check('YouTube 字幕：逐字滾動時節流，而且翻過的行吃快取', async () => {
-    await yt.waitForFunction(() => document.querySelector('#coco-yt-subtitle')?.textContent === '[譯]Hello everyone\n[譯]Today we will learn about foxes', null, { timeout: 3000 });
+    await yt.waitForFunction(() => document.querySelector('#coco-yt-subtitle .coco-yt-translated')?.textContent === '[譯]Hello everyone\n[譯]Today we will learn about foxes', null, { timeout: 3000 });
     const rollingRequests = llmRequests.slice(beforeRolling);
     assert.ok(rollingRequests.length <= 3, `滾動 5 次只該送出少數幾次請求，實際 ${rollingRequests.length} 次`);
     assert.ok(rollingRequests.every(r => !r.messages[1].content.includes('Hello everyone')), '第一行已經翻過，不該再送');
   });
+  await sw.evaluate(() => chrome.storage.local.set({ youTubeSubtitleMode: 'translation' }));
+  await check('YouTube 字幕：只顯示譯文模式', async () => {
+    await yt.waitForFunction(() => document.querySelector('#coco-yt-subtitle .coco-yt-original')?.style.display === 'none', null, { timeout: 3000 });
+    assert.equal(await yt.textContent('#coco-yt-subtitle .coco-yt-translated'), '[譯]Hello everyone\n[譯]Today we will learn about foxes');
+  });
+  llmMode = 'unauthorized';
+  await setCaptions(['This line fails to translate']);
+  await check('YouTube 字幕：翻譯失敗不跳提示，只譯文模式改顯示原文', async () => {
+    await yt.waitForFunction(() => document.querySelector('#coco-yt-subtitle .coco-yt-translated')?.textContent === 'This line fails to translate', null, { timeout: 4000 });
+    await yt.waitForTimeout(300);
+    assert.equal(await yt.locator('#coco-error-toast').count(), 0);
+  });
+  llmMode = 'ok';
+  await sw.evaluate(() => chrome.storage.local.set({ youTubeSubtitleMode: 'bilingual' }));
   await setCaptions([]);
-  await check('YouTube 字幕：字幕消失時譯文也隱藏', async () => {
+  await check('YouTube 字幕：字幕消失時字幕框也隱藏', async () => {
     await yt.waitForFunction(() => document.querySelector('#coco-yt-subtitle')?.style.display === 'none', null, { timeout: 3000 });
   });
   await sw.evaluate(() => chrome.storage.local.set({ enableYouTubeSubtitles: false }));
-  await check('YouTube 字幕：關閉後移除', async () => {
+  await check('YouTube 字幕：關閉後移除字幕框，原本的 CC 恢復顯示', async () => {
     await yt.waitForFunction(() => !document.querySelector('#coco-yt-subtitle'), null, { timeout: 3000 });
+    assert.equal(await yt.evaluate(() => getComputedStyle(document.querySelector('.ytp-caption-window-container')).opacity), '1');
   });
   await yt.close();
 

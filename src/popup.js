@@ -348,6 +348,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   youTubeSubtitlesCheckbox.addEventListener('change', () => {
     chrome.storage.local.set({ enableYouTubeSubtitles: youTubeSubtitlesCheckbox.checked });
   });
+  // 字幕框顯示原文＋譯文，或只顯示譯文
+  const youTubeModeSelect = document.getElementById('youTubeSubtitleMode');
+  chrome.storage.local.get(['youTubeSubtitleMode'], data => {
+    youTubeModeSelect.value = data.youTubeSubtitleMode === 'translation' ? 'translation' : 'bilingual';
+  });
+  youTubeModeSelect.addEventListener('change', () => {
+    chrome.storage.local.set({ youTubeSubtitleMode: youTubeModeSelect.value });
+  });
 
   enableSelectionButtonCheckbox.addEventListener('change', (e) => {
     const enableSelectionButton = e.target.checked;

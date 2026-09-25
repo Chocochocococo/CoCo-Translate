@@ -34,10 +34,20 @@ class TranslationError extends Error {
   }
 }
 
+// 錯誤回應常常是一整頁 HTML（例如 Google 的 502 錯誤頁），只留標題，別把整頁塞進提示
+const summarizeErrorBody = text => {
+  if (!text) return '';
+  if (/<(!doctype|html|head|body)\b/i.test(text)) {
+    const title = text.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+    return title ? title[1].replace(/\s+/g, ' ').trim().slice(0, 120) : '';
+  }
+  return text.replace(/\s+/g, ' ').trim().slice(0, 200);
+};
+
 const httpError = async (response, providerLabel) => {
   let detail = '';
   try {
-    detail = (await response.text()).slice(0, 300);
+    detail = summarizeErrorBody(await response.text());
   } catch (e) {
     // 讀不到就算了
   }
@@ -45,15 +55,32 @@ const httpError = async (response, providerLabel) => {
   let code = 'http';
   if (status === 401 || status === 403) code = 'auth';
   else if (status === 402 || status === 429 || status === 456) code = 'quota';
-  return new TranslationError(code, `${providerLabel} ${status} ${response.statusText} ${detail}`.trim());
+  return new TranslationError(code, `${providerLabel} ${status} ${response.statusText} ${detail}`.replace(/\s+/g, ' ').trim());
 };
 
-// fetch 本身失敗（斷網、DNS、CORS）也包成 TranslationError
+const RETRY_DELAYS = [500, 1500];
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+// fetch 本身失敗（斷網、DNS、CORS）也包成 TranslationError；
+// 伺服器暫時出錯（5xx）或連線失敗會自動重試兩次，額度用完（429）這類就不重試
 const safeFetch = async (url, options, providerLabel) => {
-  try {
-    return await fetch(url, options);
-  } catch (error) {
-    throw new TranslationError('network', `${providerLabel}: ${error.message}`);
+  for (let attempt = 0; ; attempt++) {
+    const canRetry = attempt < RETRY_DELAYS.length;
+    let response;
+    try {
+      response = await fetch(url, options);
+    } catch (error) {
+      if (canRetry) {
+        await sleep(RETRY_DELAYS[attempt]);
+        continue;
+      }
+      throw new TranslationError('network', `${providerLabel}: ${error.message}`);
+    }
+    if (response.status >= 500 && canRetry) {
+      await sleep(RETRY_DELAYS[attempt]);
+      continue;
+    }
+    return response;
   }
 };
 
@@ -287,6 +314,6 @@ class DeepLTranslator {
 }
 
 Object.assign(globalThis, {
-  languageFullNames, getLanguageFullName, TranslationError, httpError, safeFetch,
+  languageFullNames, getLanguageFullName, TranslationError, httpError, safeFetch, summarizeErrorBody,
   GoogleTranslator, GoogleApiKeyTranslator, BingTranslator, DeepLTranslator
 });

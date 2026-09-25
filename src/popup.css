@@ -348,6 +348,16 @@ body {
   font-size: 13px;
 }
 
+/* YouTube 字幕模式的小選單 - 靠北，擠在勾選框後面 */
+.mini-select {
+  margin-left: auto;
+  padding: 1px 2px;
+  font-size: 12px;
+  border: 1px solid #ccc;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
 .checkbox-grid .label input {
   margin: 2px 0 0;
   flex-shrink: 0;

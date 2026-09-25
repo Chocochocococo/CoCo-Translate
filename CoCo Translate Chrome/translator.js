@@ -175,7 +175,7 @@ class GoogleTranslator {
       const response = await limitedFetch(this.baseUrl, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/application/json+protobuf',
+          'Content-Type': 'application/json+protobuf',
           'X-goog-api-key': authKey
         },
         body: requestBody

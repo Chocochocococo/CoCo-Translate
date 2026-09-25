@@ -67,7 +67,7 @@ Chrome 會依呼叫順序回傳，所以自動翻譯執行時 `pageTranslator` �
 | 2-6 | `translator.js:324` | Content-Type 打成 `application/application/json+protobuf` |
 | 2-7 | Firefox `background.js` 有 `onStartup` 重建右鍵選單的修正，Chrome 版沒有 |
 | 2-8 | `content.js` 多處 | `translateBtn` 未宣告（隱式全域）、`popup.js:349` 的 `enableSelectionButton` 也是 |
-| 2-9 | Chrome `manifest.json:29` | content scripts 清單裡多了 `popup.js`，等於把 popup 的程式碼注入到每個網頁。若它的 `DOMContentLoaded` 回呼有執行，會在每個頁面塞一個隱藏的 `#apiModal`，接著因為找不到 `openApiModalBtn` 拋錯。content.js 沒有用到 popup.js 的任何函式，直接拿掉即可 |
+| 2-9 | Chrome `manifest.json:29` | content scripts 清單裡多了 `popup.js`，每個網頁都會多載入一份 popup 的程式碼（實測它的 `DOMContentLoaded` 回呼沒有執行，所以沒造成錯誤，純粹是多餘的負擔）。content.js 沒有用到它，直接拿掉 |
 
 ### 🟡 P2：安全與品質
 
@@ -75,6 +75,34 @@ Chrome 會依呼叫順序回傳，所以自動翻譯執行時 `pageTranslator` �
 - 五個 Translator class 有大量重複（快取、引號轉換、regex 後處理各寫五次）
 - console 訊息的「他媽的」風格：**保留，這是特色** 🫡
 - 沒有 lint、沒有自動化測試、沒有打包腳本；`Coco Translate v1.3.2.0.xpi` 二進位檔直接 commit 在 repo
+
+---
+
+## ✅ Phase 1 完成紀錄（v1.3.3.0）
+
+Chrome、Firefox 兩邊同步修改。
+
+| 問題 | 修法 |
+|---|---|
+| 1-1 自動翻譯 race condition | 翻譯器改由 `loadTranslators()` 一次讀齊設定後建立，所有翻譯入口都先 `await translatorsReady` |
+| 1-2 自動翻譯沒通知背景頁 | 自動翻譯時送 `TRANSLATE_PAGE`；頁面載入時送 `CONTENT_READY` 重設狀態 |
+| 1-3 勾選後要重新整理 | 勾選當下直接翻譯、取消勾選直接還原；`chrome://` 等頁面停用勾選框 |
+| 設定傳不到頁面 | content script 改聽 `storage.onChanged`：翻譯來源、API key、目標語言、觸發鍵、各種按鈕開關都即時生效 |
+| 2-1 背景頁訊息處理 | 移除錯誤的 else 分支；`SET_TARGET_LANGUAGE` 原本會被 tabId 檢查擋掉，一併修正 |
+| 2-2 選單狀態消失 | Chrome 存 `storage.session`；選單只反映「目前分頁」，切換視窗也會更新 |
+| 2-6 Content-Type 打錯 | 改成 `application/json+protobuf` |
+| 2-7 `onStartup` 重建選單 | 兩邊都有了，並先 `removeAll()` 避免重複 id |
+| 2-8 隱式全域變數 | 補上宣告 |
+| 2-9 多注入 popup.js | 從 Chrome manifest 移除 |
+
+額外修掉的：
+
+- **更新擴充功能會把目標語言重設成 zh-TW、翻譯重新開啟**：`onInstalled` 改成只補上缺少的設定
+- **DeepL Pro 帳號設定沒有作用**：原本建立 `DeepLTranslator` 時沒有傳入帳號類型，永遠打 free 端點
+- 瀏覽器重開後，停用狀態的圖示會變回啟用圖示
+- 懸浮按鈕關掉再打開，不會再重複掛上點擊監聽器
+
+測試：在 Chromium 載入擴充功能，用假的 Google 翻譯回應做端對端測試。舊版重現 `Cannot read properties of undefined (reading 'translate')`；新版的自動翻譯、選單狀態、設定即時生效、popup 勾選和取消勾選都通過。Firefox 版沒辦法在測試環境執行，改用比對確認兩邊的修改一致，**仍需要在 Firefox 實機測一次**。
 
 ---
 

@@ -20,7 +20,7 @@ let debounceTimer = null,
     originalTextTooltip = null;
 let triggerTranslator, pageTranslator;
 let triggerKey = 'ControlRight';
-let selectionTranslationButton, floatingButton, inputBox, translationBox, translationBoxContent, tooltip;
+let selectionTranslationButton, floatingButton, inputBox, translationBox, translationBoxContent, tooltip, translateBtn;
 let cursorPosition = { x: 0, y: 0 };
 
 browser.storage.local.get(['isEnabled', 'targetLanguage', 'triggerKey', 'enableSelectionButton', 'showOriginalTooltip'], data => {
@@ -180,6 +180,7 @@ const handleTranslation = async target => {
 };
 
 const translateHTMLStructure = async html => {
+  await translatorsReady;
   const container = document.createElement('div');
   container.innerHTML = html;
   if (isPageTranslationMode) {
@@ -252,6 +253,7 @@ const translateHTMLStructure = async html => {
 };
 
 const translatePage = async () => {
+  await translatorsReady;
   isRestoring = false;
   isPageTranslationMode = true;
   await translateElementRecursively_OnlyPageTranslator(document.body);
@@ -474,57 +476,6 @@ browser.runtime.onMessage.addListener(async message => {
       break;
     case "DISABLE_AUTO_TRANSLATION":
       disableAutoTranslation();
-      break;
-      case "UPDATE_TRIGGER_TRANSLATION_SOURCE":
-        {
-        const source = message.translationSource;
-        if (source === 'bing') {
-          triggerTranslator = new BingTranslator();
-        } else if (source === 'google-api') {
-          browser.storage.local.get(['googleApiKey'], data => {
-            const apiKey = data.googleApiKey || '';
-            triggerTranslator = new GoogleApiKeyTranslator(apiKey);
-          });
-        } else if (source === 'deepl-api') {
-          browser.storage.local.get(['deepLApiKey'], data => {
-            const apikey = data.deepLApiKey || '';
-            triggerTranslator = new DeepLTranslator(apikey);
-          });
-        } else if (source === 'mistral-api') {
-          browser.storage.local.get(['mistralApiKey'], data => {
-            const apiKey = data.mistralApiKey || '';
-            triggerTranslator = new MistralTranslator(apiKey);
-          });
-        } else {
-          triggerTranslator = new GoogleTranslator();
-        }
-      }
-        break;
-      case "UPDATE_PAGE_TRANSLATION_SOURCE":
-        {
-        const source = message.translationSource;
-        if (source === 'bing') {
-          pageTranslator = new BingTranslator();
-        } else if (source === 'google-api') {
-          browser.storage.local.get(['googleApiKey'], data => {
-            const apiKey = data.googleApiKey || '';
-            pageTranslator = new GoogleApiKeyTranslator(apiKey);
-          });
-        } else if (source === 'deepl-api') {
-          browser.storage.local.get(['deepLApiKey'], data => {
-            const apikey = data.deepLApiKey || '';
-            pageTranslator  = new DeepLTranslator(apikey);
-          });
-        } else if (source === 'mistral-api') {
-          console.warn('Fuck! Mistral 不支援整頁翻譯，改用 GoogleTranslator！');
-          pageTranslator = new GoogleTranslator();
-        } else {
-          pageTranslator = new GoogleTranslator();
-        }
-      }
-      break;            
-    case 'UPDATE_SHOW_ORIGINAL_TOOLTIP':
-      showOriginalTooltip = message.showOriginalTooltip;
       break;
   }
 });
@@ -849,7 +800,11 @@ const updateComponentsPosition = (btnLeft, btnTop) => {
   }
 };
 
+let outsideClickListenerAttached = false;
 const setupOutsideClickListener = () => {
+  // 懸浮按鈕關掉再打開會重建一次，監聽器只掛一次就好
+  if (outsideClickListenerAttached) return;
+  outsideClickListenerAttached = true;
   document.addEventListener('click', e => {
     if (
       (!inputBox || !inputBox.contains(e.target)) &&
@@ -1024,6 +979,7 @@ const toggleTranslationBoxes = () => {
 };
 
 const hideTranslationBoxes = () => {
+  if (!inputBox) return;
   inputBox.style.opacity = '0';
   translationBox.style.opacity = '0';
   translateBtn.style.opacity = '0';
@@ -1103,6 +1059,7 @@ const updateTranslationBox = async text => {
   isTranslating = true;
   translationBoxContent.innerHTML = `<img src="${browser.runtime.getURL('icons/loading.gif')}" style="width:24px;height:24px;">`;
   try {
+    await translatorsReady;
     const translated = await triggerTranslator.translateInputText(text, inputTargetLanguage);
     translationBoxContent.textContent = translated;
   } catch (err) {
@@ -1122,79 +1079,94 @@ browser.storage.local.get(['inputTargetLanguage'], data => {
   inputTargetLanguage = data.inputTargetLanguage || 'en';
 });
 
+const applySelectionButtonSetting = enabled => {
+  enableSelectionButton = enabled;
+  if (!enableSelectionButton && selectionTranslationButton) {
+    selectionTranslationButton.remove();
+    selectionTranslationButton = null;
+  }
+};
+
+const applyFloatingButtonSetting = async enabled => {
+  if (window.top !== window.self) return;
+  await updateFloatingButton(enabled);
+  if (enabled) {
+    if (!inputBox) createTranslationBoxes();
+  } else {
+    [inputBox, translationBox, translateBtn, document.getElementById('copy-button'), tooltip]
+      .forEach(el => el?.remove());
+    inputBox = translationBox = translationBoxContent = translateBtn = tooltip = null;
+  }
+};
+
 browser.storage.local.get(['enableFloatingButton'], data => {
-  updateFloatingButton(data.enableFloatingButton !== false);
-  if (data.enableFloatingButton !== false) createTranslationBoxes();
+  applyFloatingButtonSetting(data.enableFloatingButton !== false);
 });
 
-browser.runtime.onMessage.addListener(message => {
-  if (message.type === 'TOGGLE_FLOATING_BUTTON') {
-    updateFloatingButton(message.isEnabled);
-    if (message.isEnabled) createTranslationBoxes();
-    else {
-      if (inputBox) inputBox.remove();
-      if (translationBox) translationBox.remove();
-      if (translateBtn) translateBtn.remove();
-    }
+// 翻譯來源（支援：google, google-api, bing, deepl-api, mistral-api）
+const TRANSLATOR_SETTING_KEYS = [
+  'triggerTranslationSource', 'pageTranslationSource',
+  'googleApiKey', 'deepLApiKey', 'deepLAccountType', 'mistralApiKey'
+];
+
+const createTranslator = (source, settings, { allowLLM = true } = {}) => {
+  switch (source) {
+    case 'bing':
+      return new BingTranslator();
+    case 'google-api':
+      return new GoogleApiKeyTranslator(settings.googleApiKey || '');
+    case 'deepl-api':
+      return new DeepLTranslator(settings.deepLApiKey || '', settings.deepLAccountType || 'free');
+    case 'mistral-api':
+      if (allowLLM) return new MistralTranslator(settings.mistralApiKey || '');
+      console.warn('Fuck! Mistral 不支援整頁翻譯，改用 GoogleTranslator！');
+      return new GoogleTranslator();
+    default:
+      return new GoogleTranslator();
   }
-  if (message.type === 'UPDATE_SELECTION_BUTTON') {
-    enableSelectionButton = message.enableSelectionButton;
-    if (!enableSelectionButton && selectionTranslationButton) {
-      selectionTranslationButton.remove();
-      selectionTranslationButton = null;
-    }
-  }
+};
+
+// 一次把來源跟 API key 全部讀齊，觸發式跟整頁翻譯器同時建好
+const loadTranslators = () => new Promise(resolve => {
+  browser.storage.local.get(TRANSLATOR_SETTING_KEYS, settings => {
+    triggerTranslator = createTranslator(settings.triggerTranslationSource || 'google', settings);
+    pageTranslator = createTranslator(settings.pageTranslationSource || 'google', settings, { allowLLM: false });
+    resolve();
+  });
 });
+
+// 翻譯器是非同步建立的，任何翻譯動作都要先 await translatorsReady，
+// 不然「總是翻譯此網站」會在翻譯器還沒建好時就開跑，直接 undefined.translate() 爆炸
+let translatorsReady = loadTranslators();
+
+// popup 改設定只會寫進 storage（它的 runtime.sendMessage 根本送不到 content script），
+// 所以直接監聽 storage 變化，改完馬上生效，不用重新整理頁面
+browser.storage.onChanged.addListener((changes, namespace) => {
+  if (namespace !== 'local') return;
+  const changed = key => key in changes;
+  if (TRANSLATOR_SETTING_KEYS.some(changed)) translatorsReady = loadTranslators();
+  if (changed('isEnabled')) {
+    isEnabled = changes.isEnabled.newValue ?? true;
+    if (!isEnabled) removeAllTranslations();
+  }
+  if (changed('targetLanguage')) targetLanguage = changes.targetLanguage.newValue || 'zh-TW';
+  if (changed('inputTargetLanguage')) inputTargetLanguage = changes.inputTargetLanguage.newValue || 'en';
+  if (changed('triggerKey')) triggerKey = changes.triggerKey.newValue || 'ControlRight';
+  if (changed('showOriginalTooltip')) showOriginalTooltip = changes.showOriginalTooltip.newValue !== false;
+  if (changed('enableSelectionButton')) applySelectionButtonSetting(changes.enableSelectionButton.newValue !== false);
+  if (changed('enableFloatingButton')) applyFloatingButtonSetting(changes.enableFloatingButton.newValue !== false);
+});
+
+// 告訴 background 這是剛載入的新頁面，右鍵選單的整頁翻譯狀態要重設
+browser.runtime.sendMessage({ type: 'CONTENT_READY' }).catch(() => {});
 
 // Auto-start page translation for whitelisted sites
-browser.storage.local.get(["siteTranslationList"], data => {
+browser.storage.local.get(["siteTranslationList"], async data => {
   const list = data.siteTranslationList || [];
-  if (list.includes(window.location.origin)) translatePage();
-});
-
-// 初始化觸發式翻譯 API（支援：google, google-api, bing, deepl-api, mistral-api）
-browser.storage.local.get(['triggerTranslationSource'], data => {
-  const tSource = data.triggerTranslationSource || 'google';
-  if (tSource === 'bing') {
-    triggerTranslator = new BingTranslator();
-  } else if (tSource === 'google-api') {
-    browser.storage.local.get(['googleApiKey'], data => {
-      const apiKey = data.googleApiKey || '';
-      triggerTranslator = new GoogleApiKeyTranslator(apiKey);
-    });
-  } else if (tSource === 'deepl-api') {
-    browser.storage.local.get(['deepLApiKey'], data => {
-      const apiKey = data.deepLApiKey || '';
-      triggerTranslator = new DeepLTranslator(apiKey);
-    });
-  } else if (tSource === 'mistral-api') {
-    browser.storage.local.get(['mistralApiKey'], data => {
-      const apiKey = data.mistralApiKey || '';
-      triggerTranslator = new MistralTranslator(apiKey);
-    });
-  } else {
-    triggerTranslator = new GoogleTranslator();
-  }
-});
-
-// 初始化整頁翻譯 API（僅提供：google, google-api, bing）
-browser.storage.local.get(['pageTranslationSource'], data => {
-  const pSource = data.pageTranslationSource || 'google';
-  if (pSource === 'bing') {
-    pageTranslator = new BingTranslator();
-  } else if (pSource === 'google-api') {
-    browser.storage.local.get(['googleApiKey'], data => {
-      const apiKey = data.googleApiKey || '';
-      pageTranslator = new GoogleApiKeyTranslator(apiKey);
-    });
-  } else if (pSource === 'deepl-api') {
-    browser.storage.local.get(['deepLApiKey'], data => {
-      const apiKey = data.deepLApiKey || '';
-      pageTranslator = new DeepLTranslator(apiKey);
-    });
-  } else {
-    pageTranslator = new GoogleTranslator();
-  }
+  if (!list.includes(window.location.origin)) return;
+  // 同步通知 background，右鍵選單才會顯示 Restore Page
+  browser.runtime.sendMessage({ type: 'TRANSLATE_PAGE' }).catch(() => {});
+  await translatePage();
 });
 
 // 額外右鍵選單用的區塊

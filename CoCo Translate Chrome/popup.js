@@ -209,8 +209,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         triggerTranslationSource: triggerSource,
         pageTranslationSource: pageSource
       }, () => {
-        chrome.runtime.sendMessage({ type: 'UPDATE_TRIGGER_TRANSLATION_SOURCE', translationSource: triggerSource });
-        chrome.runtime.sendMessage({ type: 'UPDATE_PAGE_TRANSLATION_SOURCE', translationSource: pageSource });
         checkTriggerAPIKey(triggerSource);
         checkPageAPIKey(pageSource);
         showCustomWarning('Saved!');
@@ -327,13 +325,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   enableSelectionButtonCheckbox.addEventListener('change', (e) => {
     const enableSelectionButton = e.target.checked;
     chrome.storage.local.set({ enableSelectionButton: enableSelectionButton });
-    chrome.runtime.sendMessage({ type: 'UPDATE_SELECTION_BUTTON', enableSelectionButton: enableSelectionButton });
   });
 
   showOriginalTooltipCheckbox.addEventListener('change', (e) => {
     const showOriginalTooltip = e.target.checked;
     chrome.storage.local.set({ showOriginalTooltip: showOriginalTooltip });
-    chrome.runtime.sendMessage({ type: 'UPDATE_SHOW_ORIGINAL_TOOLTIP', showOriginalTooltip: showOriginalTooltip });
   });
   
   triggerKeyInput.addEventListener('keydown', e => {
@@ -345,7 +341,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const selectedLanguage = targetLanguageSelect.value,
           selectedTriggerKey = triggerKeyInput.value.trim(),
           isEnabled = toggleTranslationSelect.value === 'true',
-          selectedInputLanguage = inputTargetLanguageSelect.value;
+          selectedInputLanguage = inputTargetLanguageSelect.value,
           enableSelectionButton = enableSelectionButtonCheckbox.checked;
 
       if (selectedTriggerKey) chrome.storage.local.set({ triggerKey: selectedTriggerKey });
@@ -357,7 +353,6 @@ document.addEventListener('DOMContentLoaded', async () => {
       });
       chrome.runtime.sendMessage({ type: 'SET_TARGET_LANGUAGE', language: selectedLanguage });
       chrome.runtime.sendMessage({ type: 'TOGGLE_TRANSLATION', isEnabled });
-      chrome.runtime.sendMessage({ type: 'UPDATE_SELECTION_BUTTON', enableSelectionButton: enableSelectionButton });
       showCustomWarning('Settings saved!');
   });
 
@@ -462,19 +457,36 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   const checkbox = document.getElementById('alwaysTranslateCheckbox');
   chrome.tabs.query({ active: true, currentWindow: true }, tabs => {
-    const currentUrl = new URL(tabs[0].url).origin;
+    const tab = tabs[0];
+    let currentUrl = null;
+    try {
+      currentUrl = new URL(tab.url).origin;
+    } catch (e) {
+      // 拿不到網址就算了
+    }
+    // chrome:// 、about: 這類頁面跑不了 content script，勾了也沒用
+    if (!currentUrl || !/^https?:/.test(currentUrl)) {
+      checkbox.disabled = true;
+      return;
+    }
     chrome.storage.local.get(["siteTranslationList"], data => {
       checkbox.checked = (data.siteTranslationList || []).includes(currentUrl);
     });
     checkbox.addEventListener('change', () => {
+      const shouldTranslate = checkbox.checked;
       chrome.storage.local.get(["siteTranslationList"], data => {
         let siteList = data.siteTranslationList || [];
-        if (checkbox.checked) {
+        if (shouldTranslate) {
           if (!siteList.includes(currentUrl)) siteList.push(currentUrl);
         } else {
           siteList = siteList.filter(site => site !== currentUrl);
         }
-        chrome.storage.local.set({ siteTranslationList: siteList });
+        chrome.storage.local.set({ siteTranslationList: siteList }, () => {
+          // 勾選當下就直接翻譯、取消勾選就還原，不用再重新整理頁面
+          const type = shouldTranslate ? 'TRANSLATE_PAGE' : 'RESTORE_PAGE';
+          chrome.tabs.sendMessage(tab.id, { type }, () => void chrome.runtime.lastError);
+          chrome.runtime.sendMessage({ type, tabId: tab.id }, () => void chrome.runtime.lastError);
+        });
       });
     });
   });
@@ -536,7 +548,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     const isEnabled = enableFloatingButtonCheckbox.checked;
     chrome.storage.local.set({ enableFloatingButton: isEnabled }, () => {
       console.log('Floating button setting saved:', isEnabled);
-      chrome.runtime.sendMessage({ type: 'TOGGLE_FLOATING_BUTTON', isEnabled });
     });
   });
 

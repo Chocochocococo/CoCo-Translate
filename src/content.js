@@ -563,9 +563,9 @@ function restoreUnits() {
 }
 
 /**
- * 整頁翻譯：先整段翻，對不回去的段落再用舊方式逐片段翻
+ * 馬上翻：先整段翻，對不回去的段落再用舊方式逐片段翻
  */
-async function translatePageUnits(units, fragmentNodes, { fromMutation = false } = {}) {
+async function translateUnitsNow(units, fragmentNodes, { fromMutation = false } = {}) {
   const failed = [];
   await translateJobs('page', units.map(unit => ({
     text: unit.html,
@@ -578,6 +578,69 @@ async function translatePageUnits(units, fragmentNodes, { fromMutation = false }
   const fallbackNodes = [...fragmentNodes, ...failed.flatMap(unit => unit.meaningfulTextNodes)];
   const jobs = fallbackNodes.flatMap(node => collectPageTextJobs(node, { fromMutation }));
   await translateJobs('page', jobs, targetLanguage);
+}
+
+// ---------------- 只翻畫面附近的段落 ----------------
+// 整頁翻譯時段落先登記起來，捲到畫面上下各一個螢幕的範圍內才送出，長頁面可以省很多額度；
+// 隱藏起來的內容（收合的區塊、分頁）等到顯示出來才翻
+const VISIBLE_ROOT_MARGIN = '100% 0px';
+const VISIBLE_FLUSH_DELAY = 150;          // 捲動時等一下，把同時進入畫面的段落湊成一批
+let visibilityObserver = null;
+let unitsWaitingForView = new Map();      // 段落所在的元素 → 等著翻的段落
+let visibleUnits = [];
+let visibleFlushTimer = null;
+
+const flushVisibleUnits = () => {
+  visibleFlushTimer = null;
+  const batch = visibleUnits;
+  visibleUnits = [];
+  if (!batch.length || !isPageTranslationMode) return;
+  const byMutation = batch.filter(item => item.fromMutation).map(item => item.unit);
+  const initial = batch.filter(item => !item.fromMutation).map(item => item.unit);
+  if (initial.length) translateUnitsNow(initial, []);
+  if (byMutation.length) translateUnitsNow(byMutation, [], { fromMutation: true });
+};
+
+const onVisibilityChange = entries => {
+  for (const entry of entries) {
+    if (!entry.isIntersecting) continue;
+    const waiting = unitsWaitingForView.get(entry.target);
+    unitsWaitingForView.delete(entry.target);
+    visibilityObserver.unobserve(entry.target);
+    if (waiting) visibleUnits.push(...waiting);
+  }
+  if (visibleUnits.length && !visibleFlushTimer) {
+    visibleFlushTimer = setTimeout(flushVisibleUnits, VISIBLE_FLUSH_DELAY);
+  }
+};
+
+const stopVisibilityObserver = () => {
+  visibilityObserver?.disconnect();
+  visibilityObserver = null;
+  unitsWaitingForView = new Map();
+  visibleUnits = [];
+  clearTimeout(visibleFlushTimer);
+  visibleFlushTimer = null;
+};
+
+/**
+ * 整頁翻譯：段落等進入畫面附近再翻；逐片段翻的部分馬上翻
+ */
+async function translatePageUnits(units, fragmentNodes, { fromMutation = false } = {}) {
+  if (typeof IntersectionObserver === 'undefined') {
+    await translateUnitsNow(units, fragmentNodes, { fromMutation });
+    return;
+  }
+  visibilityObserver ??= new IntersectionObserver(onVisibilityChange, { rootMargin: VISIBLE_ROOT_MARGIN });
+  for (const unit of units) {
+    const target = unit.parent;
+    if (!unitsWaitingForView.has(target)) {
+      unitsWaitingForView.set(target, []);
+      visibilityObserver.observe(target);
+    }
+    unitsWaitingForView.get(target).push({ unit, fromMutation });
+  }
+  if (fragmentNodes.length) await translateUnitsNow([], fragmentNodes, { fromMutation });
 }
 
 const handleTranslation = async target => {
@@ -798,6 +861,7 @@ const startAutoTranslationObserver = () => {
 };
 
 const stopAutoTranslationObserver = () => {
+  stopVisibilityObserver();
   if (pageTranslationObserver) {
     pageTranslationObserver.disconnect();
     pageTranslationObserver = null;

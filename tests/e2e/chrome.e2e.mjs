@@ -36,6 +36,7 @@ const PAGE = `<!doctype html><html translate="no"><head><style>p { color: black;
 Violets are blue</pre>
   <div id="editor" contenteditable="true"><p>Write your story here</p></div>
   <input id="field" placeholder="Search here">
+  <div id="far" style="margin-top: 5000px"><p id="farp">Far below the fold</p></div>
 </body></html>`;
 
 // ---------- 假的 LLM 伺服器 ----------
@@ -170,12 +171,22 @@ try {
     assert.ok(markupRequests[0].response_format, '應該用 JSON 分段模式');
   });
 
+  // 1-1. 只翻畫面附近的段落
+  await check('只翻畫面附近：很下面的段落一開始不翻', async () => {
+    assert.equal(await page.textContent('#farp'), 'Far below the fold');
+  });
+  await page.evaluate(() => document.querySelector('#farp').scrollIntoView());
+  await check('只翻畫面附近：捲到附近才翻', async () => {
+    await page.waitForFunction(() => document.querySelector('#farp').textContent === '[譯]Far below the fold', null, { timeout: 3000 });
+  });
+  await page.evaluate(() => window.scrollTo(0, 0));
+
   // 2. 動態新增的內容
   await page.evaluate(() => {
     const p = document.createElement('p');
     p.id = 'dynamic';
     p.textContent = 'Loaded later';
-    document.body.appendChild(p);
+    document.body.prepend(p);
   });
   await check('整頁翻譯：之後才載入的內容也會翻', async () => {
     await page.waitForFunction(() => document.querySelector('#dynamic').textContent === '[譯]Loaded later', null, { timeout: 3000 });
@@ -199,7 +210,7 @@ try {
     editor.id = 'late-editor';
     editor.contentEditable = 'true';
     editor.textContent = 'Share your thoughts';
-    document.body.appendChild(editor);
+    document.body.prepend(editor);
   });
   await check('編輯器：之後才載入的編輯器預設文字也會翻', async () => {
     await page.waitForFunction(() => document.querySelector('#late-editor').textContent === '[譯]Share your thoughts', null, { timeout: 3000 });
@@ -292,6 +303,7 @@ try {
   await check('快捷鍵：翻譯整頁 ⇄ 還原', async () => {
     const toggle = () => sw.evaluate(async id => commandHandlers['toggle-page-translation'](await chrome.tabs.get(id)), tabId);
     await page.bringToFront();
+    await page.evaluate(() => window.scrollTo(0, 0));   // 只翻畫面附近，先捲回頂端
     await toggle();
     await page.waitForFunction(() => document.querySelector('#p2').textContent === '[譯]The quick brown fox', null, { timeout: 3000 });
     await toggle();

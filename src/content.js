@@ -223,7 +223,7 @@ const SKIP_TAGS = new Set(['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE', 'TEXTAREA'
 // CoCo 自己的介面
 const SKIP_SELECTOR = [
   '.immersive-translation-container', '.coco-bilingual', '#custom-context-menu', '#input-box', '#translation-box',
-  '#coco-selection-toolbar', '#coco-word-card',
+  '#coco-selection-toolbar', '#coco-word-card', '#coco-yt-subtitle', '.ytp-caption-window-container',
   '#original-text-tooltip', '#copy-tooltip', '#coco-error-toast'
 ].join(', ');
 
@@ -1821,7 +1821,147 @@ chrome.storage.onChanged.addListener((changes, namespace) => {
   }
   if (changed('enableSelectionButton')) applySelectionButtonSetting(changes.enableSelectionButton.newValue !== false);
   if (changed('enableFloatingButton')) applyFloatingButtonSetting(changes.enableFloatingButton.newValue !== false);
+  if (changed('enableYouTubeSubtitles')) YouTubeSubtitles.setEnabled(changes.enableYouTubeSubtitles.newValue === true);
 });
+
+// ---------------- YouTube 雙語字幕 ----------------
+// 讀 YouTube 畫面上正在顯示的字幕，一行一行翻好，顯示在原字幕上方。
+// 用整頁翻譯的來源（預設 Google，不耗 AI 額度）；每行翻過就快取，自動產生的滾動字幕也不會一直重翻
+const YouTubeSubtitles = (() => {
+  const isYouTube = /(^|\.)youtube\.com$/.test(location.hostname);
+  const PLAYER_SELECTOR = '#movie_player, .html5-video-player';
+  const CAPTION_WINDOW_SELECTOR = '.ytp-caption-window-container .caption-window';
+  const THROTTLE_MS = 600;
+  const cache = new Map();
+  let enabled = false;
+  let player = null;
+  let observer = null;
+  let overlay = null;
+  let pollTimer = null;
+  let throttleTimer = null;
+  let lastRun = 0;
+  let renderId = 0;
+
+  const captionLines = () => [...document.querySelectorAll(`${CAPTION_WINDOW_SELECTOR} .caption-visual-line`)]
+    .map(line => line.textContent.replace(/\s+/g, ' ').trim())
+    .filter(Boolean);
+
+  const ensureOverlay = () => {
+    if (overlay && overlay.isConnected) return overlay;
+    overlay = document.createElement('div');
+    overlay.id = 'coco-yt-subtitle';
+    Object.assign(overlay.style, {
+      position: 'absolute',
+      left: '50%',
+      transform: 'translateX(-50%)',
+      maxWidth: '90%',
+      padding: '2px 8px',
+      background: 'rgba(8, 8, 8, 0.75)',
+      color: '#fff',
+      textAlign: 'center',
+      lineHeight: '1.3',
+      borderRadius: '2px',
+      pointerEvents: 'none',
+      zIndex: '60',
+      display: 'none',
+      whiteSpace: 'pre-line'
+    });
+    player.appendChild(overlay);
+    return overlay;
+  };
+
+  const hide = () => {
+    if (overlay) overlay.style.display = 'none';
+  };
+
+  // 放在原字幕正上方，字體大小跟原字幕一樣
+  const position = () => {
+    const captionWindow = document.querySelector(CAPTION_WINDOW_SELECTOR);
+    const segment = document.querySelector(`${CAPTION_WINDOW_SELECTOR} .ytp-caption-segment`);
+    if (!captionWindow || !player) return false;
+    const playerRect = player.getBoundingClientRect();
+    const captionRect = captionWindow.getBoundingClientRect();
+    overlay.style.bottom = `${Math.max(0, playerRect.bottom - captionRect.top + 4)}px`;
+    overlay.style.fontSize = segment ? getComputedStyle(segment).fontSize : '18px';
+    return true;
+  };
+
+  const render = async () => {
+    lastRun = Date.now();
+    const lines = captionLines();
+    if (!lines.length) {
+      hide();
+      return;
+    }
+    const id = ++renderId;
+    const missing = lines.filter(line => !cache.has(line));
+    if (missing.length) {
+      const { translations, error } = await requestTranslations('page', missing, targetLanguage);
+      missing.forEach((line, i) => {
+        if (!(error && translations[i] === line)) cache.set(line, translations[i]);
+      });
+      if (id !== renderId) return;   // 等翻譯的時候字幕又換了，交給新的那一輪
+    }
+    // 跟原文一樣（例如本來就是目標語言）就不重複顯示
+    const translated = lines
+      .map(line => cache.get(line))
+      .filter((text, i) => text && text.replace(/\s+/g, '') !== lines[i].replace(/\s+/g, ''));
+    if (!enabled || !translated.length) {
+      hide();
+      return;
+    }
+    ensureOverlay().textContent = translated.join('\n');
+    if (position()) overlay.style.display = 'block';
+  };
+
+  // 字幕一變就更新；逐字滾動的自動字幕最多每 0.6 秒翻一次
+  const schedule = () => {
+    if (!enabled) return;
+    clearTimeout(throttleTimer);
+    const wait = Math.max(0, THROTTLE_MS - (Date.now() - lastRun));
+    throttleTimer = setTimeout(render, wait);
+  };
+
+  const attach = () => {
+    const found = document.querySelector(PLAYER_SELECTOR);
+    if (!found || found === player) return;
+    observer?.disconnect();
+    player = found;
+    overlay = null;
+    observer = new MutationObserver(mutations => {
+      const captionChanged = mutations.some(m => {
+        const target = m.target.nodeType === Node.TEXT_NODE ? m.target.parentElement : m.target;
+        return target?.closest?.('.ytp-caption-window-container');
+      });
+      if (captionChanged) schedule();
+    });
+    observer.observe(player, { childList: true, subtree: true, characterData: true });
+  };
+
+  const setEnabled = value => {
+    enabled = !!value && isYouTube;
+    if (!enabled) {
+      observer?.disconnect();
+      observer = null;
+      player = null;
+      clearInterval(pollTimer);
+      pollTimer = null;
+      overlay?.remove();
+      overlay = null;
+      return;
+    }
+    // YouTube 是單頁應用程式，播放器可能晚一點才出現，也可能換掉，定期檢查
+    attach();
+    pollTimer ??= setInterval(attach, 1000);
+    schedule();
+  };
+
+  return { setEnabled, isYouTube };
+})();
+
+if (YouTubeSubtitles.isYouTube) {
+  chrome.storage.local.get(['enableYouTubeSubtitles'], data => YouTubeSubtitles.setEnabled(data.enableYouTubeSubtitles === true));
+}
 
 // 告訴 background 這是剛載入的新頁面，右鍵選單的整頁翻譯狀態要重設
 chrome.runtime.sendMessage({ type: 'CONTENT_READY' }, () => void chrome.runtime.lastError);

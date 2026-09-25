@@ -340,6 +340,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   });
 
+  // YouTube 雙語字幕（預設關閉，改了馬上生效）
+  const youTubeSubtitlesCheckbox = document.getElementById('enableYouTubeSubtitles');
+  chrome.storage.local.get(['enableYouTubeSubtitles'], data => {
+    youTubeSubtitlesCheckbox.checked = data.enableYouTubeSubtitles === true;
+  });
+  youTubeSubtitlesCheckbox.addEventListener('change', () => {
+    chrome.storage.local.set({ enableYouTubeSubtitles: youTubeSubtitlesCheckbox.checked });
+  });
+
   enableSelectionButtonCheckbox.addEventListener('change', (e) => {
     const enableSelectionButton = e.target.checked;
     chrome.storage.local.set({ enableSelectionButton: enableSelectionButton });

@@ -156,7 +156,7 @@ const i18nStrings = {
     vocabularyDescription: "Words saved from the word card (select text → 📖). Export them to study in Anki.",
     exportAnki: "Export for Anki",
     clearAll: "Clear all",
-    ankiHint: "In Anki: File → Import and choose the exported file. Fields: word, translation, phonetic, context, source.",
+    ankiHint: "In Anki: File → Import and choose the exported file. Fields: word, translation, phonetic, context, source, dictionary meanings.",
     vocabularyEmpty: "No words yet.",
 
     // 設定頁：正規表達式
@@ -312,7 +312,7 @@ const i18nStrings = {
     vocabularyDescription: "從單字卡收藏的生字（選取文字 → 📖）。可以匯出到 Anki 背單字。",
     exportAnki: "匯出成 Anki 格式",
     clearAll: "全部刪除",
-    ankiHint: "在 Anki 選「檔案 → 匯入」，選擇匯出的檔案。欄位：單字、譯文、音標、例句、來源網頁。",
+    ankiHint: "在 Anki 選「檔案 → 匯入」，選擇匯出的檔案。欄位：單字、譯文、音標、例句、來源網頁、字典的意思。",
     vocabularyEmpty: "還沒有收藏任何單字。",
 
     regexTitle: "正規表達式",

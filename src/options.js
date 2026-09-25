@@ -617,9 +617,10 @@ function initGlossary() {
 // Anki 匯入格式：Tab 分隔，開頭幾行告訴 Anki 怎麼讀（Anki 2.1.54 以後支援）
 function toAnkiText(vocabulary) {
   const clean = value => String(value || '').replace(/[\t\r\n]+/g, ' ').trim();
+  // Meanings（字典的多個意思）放最後一欄，舊的 Anki 匯入設定照樣能用
   const lines = vocabulary.map(item =>
-    [item.word, item.translation, item.phonetic, item.context, item.url].map(clean).join('\t'));
-  return ['#separator:tab', '#html:false', '#columns:Word\tTranslation\tPhonetic\tContext\tSource', ...lines].join('\n') + '\n';
+    [item.word, item.translation, item.phonetic, item.context, item.url, item.meanings].map(clean).join('\t'));
+  return ['#separator:tab', '#html:false', '#columns:Word\tTranslation\tPhonetic\tContext\tSource\tMeanings', ...lines].join('\n') + '\n';
 }
 
 function initVocabulary() {
@@ -643,6 +644,11 @@ function initVocabulary() {
       const translation = document.createElement('div');
       translation.textContent = item.translation || '';
       const nodes = [head, translation];
+      if (item.meanings) {
+        const meanings = document.createElement('div');
+        meanings.textContent = item.meanings;
+        nodes.push(meanings);
+      }
       if (item.context) {
         const context = document.createElement('div');
         context.className = 'hint';

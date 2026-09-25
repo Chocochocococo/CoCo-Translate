@@ -10,6 +10,8 @@ import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
 
 const require = createRequire(import.meta.url);
+// 讓 context.route 也攔得到擴充功能 service worker 送出的請求（字典用假的資料）
+process.env.PW_EXPERIMENTAL_SERVICE_WORKER_NETWORK_EVENTS = '1';
 const { chromium } = (() => {
   try {
     return require('playwright');
@@ -452,11 +454,34 @@ try {
     const actions = await page.$$eval('#coco-selection-toolbar button', bs => bs.filter(b => b.style.display !== 'none').map(b => b.dataset.action));
     assert.deepEqual(actions, ['translate', 'lookup', 'speak']);
   });
+  // 假的字典資料：Google 雙語詞典＋Free Dictionary 英英解釋
+  await context.route('https://translate.googleapis.com/translate_a/single**', route => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({
+      sentences: [{ trans: '意外發現', orig: 'serendipity' }],
+      dict: [{ pos: '名詞', terms: ['意外發現', '機緣巧合'], entry: [{ word: '意外發現' }, { word: '機緣巧合' }, { word: '偶然發現珍寶的運氣' }] }],
+      src: 'en'
+    })
+  }));
+  await context.route('https://api.dictionaryapi.dev/**', route => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify([{ word: 'serendipity', phonetic: '/ˌsɛɹ.ənˈdɪp.ɪ.ti/', meanings: [{ partOfSpeech: 'noun', definitions: [
+      { definition: 'An unsought, unintended, and unexpected, but fortunate, discovery.', example: 'It was pure serendipity.' },
+      { definition: 'The faculty of making such discoveries.' }
+    ] }] }])
+  }));
   await page.click('#coco-selection-toolbar button[data-action="speak"]');
   await page.click('#coco-selection-toolbar button[data-action="lookup"]');
   await check('單字卡：顯示譯文與例句', async () => {
     await page.waitForFunction(() => document.querySelector('#coco-word-card .coco-word-translation')?.textContent === '[譯]serendipity', null, { timeout: 3000 });
     assert.match(await page.textContent('#coco-word-card'), /Books are full of serendipity\./);
+  });
+  await check('單字卡：字典依詞性列出多個意思，英英解釋有多條和例句', async () => {
+    await page.waitForSelector('#coco-word-card .coco-dict-sense', { timeout: 3000 });
+    assert.equal(await page.textContent('#coco-word-card .coco-dict-sense'), '名詞意外發現、機緣巧合、偶然發現珍寶的運氣');
+    assert.equal(await page.textContent('#coco-word-card .coco-phonetic'), '/ˌsɛɹ.ənˈdɪp.ɪ.ti/');
+    assert.equal(await page.locator('#coco-word-card .coco-dict-definition li').count(), 2);
+    assert.match(await page.textContent('#coco-word-card .coco-dict-definition'), /名詞.*unexpected, but fortunate.*“It was pure serendipity\.”/s);
   });
   await page.click('#coco-word-card .coco-save-word');
   await check('單字卡：加入生字本', async () => {
@@ -466,6 +491,7 @@ try {
     assert.equal(vocabulary[0].word, 'serendipity');
     assert.equal(vocabulary[0].translation, '[譯]serendipity');
     assert.equal(vocabulary[0].context, 'Books are full of serendipity.');
+    assert.equal(vocabulary[0].meanings, '名詞 意外發現、機緣巧合、偶然發現珍寶的運氣');
   });
   // 外觀：網頁裡的工具列、單字卡跟 popup 同一個設定
   const cocoColors = () => page.evaluate(() => ({
@@ -510,8 +536,10 @@ try {
     const content = fs.readFileSync(await download.path(), 'utf8');
     const lines = content.trim().split('\n');
     assert.equal(lines[0], '#separator:tab');
-    assert.equal(lines[2], '#columns:Word\tTranslation\tPhonetic\tContext\tSource');
-    assert.deepEqual(lines[3].split('\t').slice(0, 4), ['serendipity', '[譯]serendipity', '', 'Books are full of serendipity.']);
+    assert.equal(lines[2], '#columns:Word\tTranslation\tPhonetic\tContext\tSource\tMeanings');
+    const fields = lines[3].split('\t');
+    assert.deepEqual(fields.slice(0, 4), ['serendipity', '[譯]serendipity', '/ˌsɛɹ.ənˈdɪp.ɪ.ti/', 'Books are full of serendipity.']);
+    assert.equal(fields[5], '名詞 意外發現、機緣巧合、偶然發現珍寶的運氣');
   });
   await vocabPage.close();
   await sw.evaluate(() => chrome.storage.local.set({ vocabulary: [] }));

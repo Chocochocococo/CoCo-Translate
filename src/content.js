@@ -1100,8 +1100,8 @@ let lastSelection = null;   // 放開滑鼠時記下選取內容（點工具列�
 let wordCard = null;
 
 const TOOLBAR_TEXT = {
-  zh: { translate: '翻譯這一段', lookup: '查字典', speak: '朗讀', save: '加入生字本', saved: '已加入 ✓', close: '關閉', loading: '查詢中…', context: '例句' },
-  en: { translate: 'Translate paragraph', lookup: 'Look up', speak: 'Read aloud', save: 'Add to vocabulary', saved: 'Added ✓', close: 'Close', loading: 'Looking up…', context: 'Context' }
+  zh: { translate: '翻譯這一段', lookup: '查字典', speak: '朗讀', save: '加入生字本', saved: '已加入 ✓', close: '關閉', loading: '翻譯中…', context: '例句', dictionaryLoading: '查詢字典中…', bilingual: '詞典', definitions: '英英解釋' },
+  en: { translate: 'Translate paragraph', lookup: 'Look up', speak: 'Read aloud', save: 'Add to vocabulary', saved: 'Added ✓', close: 'Close', loading: 'Translating…', context: 'Context', dictionaryLoading: 'Looking up the dictionary…', bilingual: 'Dictionary', definitions: 'English definitions' }
 };
 const toolbarText = key => (TOOLBAR_TEXT[uiLanguage] || TOOLBAR_TEXT.en)[key];
 
@@ -1254,6 +1254,25 @@ const addToVocabulary = entry => new Promise(resolve => {
   });
 });
 
+// 詞性的顯示名稱（Free Dictionary 是英文；Google 會照介面語言給，已經是中文的就照原樣顯示）
+const POS_NAMES = {
+  noun: ['名詞', 'n.'], verb: ['動詞', 'v.'], adjective: ['形容詞', 'adj.'], adverb: ['副詞', 'adv.'],
+  pronoun: ['代名詞', 'pron.'], preposition: ['介系詞', 'prep.'], conjunction: ['連接詞', 'conj.'],
+  interjection: ['感嘆詞', 'interj.'], exclamation: ['感嘆詞', 'excl.'], abbreviation: ['縮寫', 'abbr.'],
+  article: ['冠詞', 'art.'], determiner: ['限定詞', 'det.'], numeral: ['數詞', 'num.'], particle: ['助詞', 'part.'],
+  'auxiliary verb': ['助動詞', 'aux.'], phrase: ['片語', 'phr.'], prefix: ['字首', 'prefix'], suffix: ['字尾', 'suffix']
+};
+const posName = pos => {
+  const names = POS_NAMES[String(pos).toLowerCase()];
+  if (!names) return pos;
+  return uiLanguage === 'zh' ? names[0] : names[1];
+};
+
+// 生字本用的一行摘要：名詞 生命、生活；形容詞 終身的
+const summarizeMeanings = dictionary => (dictionary?.bilingual || [])
+  .map(group => `${posName(group.pos)} ${group.terms.slice(0, 5).join(uiLanguage === 'zh' ? '、' : ', ')}`.trim())
+  .join('；');
+
 function showWordCard(info) {
   hideTranslationButton();
   hideWordCard();
@@ -1262,15 +1281,21 @@ function showWordCard(info) {
   wordCard = document.createElement('div');
   wordCard.id = 'coco-word-card';
   PageTheme.register(wordCard);
-  const width = 320;
+  const width = 360;
+  const maxHeight = Math.min(460, window.innerHeight - 16);
   const left = Math.min(Math.max(8, info.rect.left), window.innerWidth - width - 8);
-  const below = info.rect.bottom + 8;
+  // 下面放得下就往下長，放不下就貼在選取文字的上方往上長（字典查回來卡片會變高）
+  const roomBelow = window.innerHeight - info.rect.bottom - 16;
+  const placeBelow = roomBelow >= Math.min(300, maxHeight) || roomBelow >= info.rect.top;
   Object.assign(wordCard.style, {
     position: 'fixed',
     left: `${left}px`,
-    top: `${below + 220 > window.innerHeight ? Math.max(8, info.rect.top - 228) : below}px`,
+    ...(placeBelow
+      ? { top: `${info.rect.bottom + 8}px` }
+      : { bottom: `${window.innerHeight - info.rect.top + 8}px` }),
     width: `${width}px`,
-    maxHeight: '320px',
+    maxWidth: 'calc(100vw - 16px)',
+    maxHeight: `${placeBelow ? Math.min(maxHeight, roomBelow) : Math.min(maxHeight, info.rect.top - 16)}px`,
     overflowY: 'auto',
     padding: '14px 16px',
     background: 'var(--coco-surface)',
@@ -1291,9 +1316,17 @@ function showWordCard(info) {
     if (text) node.textContent = text;
     return node;
   };
+  const sectionTitle = text => el('div', {
+    marginTop: '10px', paddingTop: '8px', borderTop: '1px solid var(--coco-border)',
+    color: 'var(--coco-muted)', fontSize: '12px', fontWeight: '600'
+  }, text);
+  const posTag = pos => el('span', {
+    display: 'inline-block', marginRight: '6px', padding: '0 7px', borderRadius: '999px',
+    background: 'var(--coco-surface-2)', color: 'var(--coco-muted)', fontSize: '12px', lineHeight: '1.6'
+  }, posName(pos));
 
   const header = el('div', { display: 'flex', alignItems: 'baseline', gap: '8px', flexWrap: 'wrap' });
-  const title = el('strong', { fontSize: '17px', color: 'var(--coco-text)' }, word);
+  const title = el('strong', { fontSize: '18px', color: 'var(--coco-text)' }, word);
   const phonetic = el('span', { color: 'var(--coco-muted)' });
   phonetic.className = 'coco-phonetic';
   const speakButton = el('button', { border: 'none', background: 'none', cursor: 'pointer', fontSize: '16px', padding: '0' }, '🔊');
@@ -1301,17 +1334,28 @@ function showWordCard(info) {
   speakButton.addEventListener('click', () => speak(word));
   header.append(title, phonetic, speakButton);
 
-  const translation = el('div', { marginTop: '6px', fontSize: '15px' }, toolbarText('loading'));
+  // 選取文字的譯文（用滑鼠觸發翻譯的來源）
+  const translation = el('div', { marginTop: '4px', fontSize: '15px' }, toolbarText('loading'));
   translation.className = 'coco-word-translation';
-  const definitions = el('ul', { margin: '6px 0 0', paddingLeft: '18px', color: 'var(--coco-text)', opacity: '0.85', fontSize: '13px' });
-  const context = el('div', { marginTop: '8px', color: 'var(--coco-muted)', fontSize: '12px', fontStyle: 'italic' });
+
+  // 字典：雙語詞典（依詞性列出多個意思）＋英英解釋
+  const dictionaryBox = el('div');
+  dictionaryBox.className = 'coco-dictionary';
+  const dictionaryLoading = el('div', { marginTop: '8px', color: 'var(--coco-muted)', fontSize: '12px' }, toolbarText('dictionaryLoading'));
+  dictionaryBox.appendChild(dictionaryLoading);
+
+  const context = el('div', { marginTop: '10px', color: 'var(--coco-muted)', fontSize: '12px', fontStyle: 'italic' });
   if (info.context && info.context !== word) context.textContent = `${toolbarText('context')}：${info.context}`;
 
-  const footer = el('div', { display: 'flex', gap: '8px', marginTop: '10px' });
+  // 字典很長要捲動時，按鈕固定在卡片底部，不用捲到最下面才按得到
+  const footer = el('div', {
+    display: 'flex', gap: '8px', marginTop: '8px', padding: '8px 0 14px',
+    position: 'sticky', bottom: '-14px', background: 'var(--coco-surface)'
+  });
   const buttonStyle = { padding: '5px 14px', border: 'none', borderRadius: '999px', cursor: 'pointer', font: '600 13px system-ui, sans-serif' };
   const saveButton = el('button', { ...buttonStyle, background: 'var(--coco-accent)', color: 'var(--coco-accent-ink)' }, toolbarText('save'));
   saveButton.className = 'coco-save-word';
-  // 還沒查到譯文、或已經收藏了 → 按鈕變淡
+  // 還沒查到東西、或已經收藏了 → 按鈕變淡
   const setSaveEnabled = enabled => {
     saveButton.disabled = !enabled;
     saveButton.style.opacity = enabled ? '1' : '0.5';
@@ -1322,12 +1366,58 @@ function showWordCard(info) {
   closeButton.addEventListener('click', hideWordCard);
   footer.append(saveButton, closeButton);
 
-  wordCard.append(header, translation, definitions, context, footer);
+  wordCard.append(header, translation, dictionaryBox, context, footer);
   document.body.appendChild(wordCard);
 
   const card = wordCard;
-  let result = { translation: '', phonetic: '' };
-  // 譯文（觸發式翻譯的來源）和字典分開查，誰先回來誰先顯示
+  const result = { translation: '', phonetic: '', meanings: '' };
+  let saved = false;
+  const refreshSaveButton = () => setSaveEnabled(!saved && !!(result.translation || result.meanings));
+
+  const renderDictionary = dictionary => {
+    dictionaryBox.replaceChildren();
+    if (!dictionary) return;
+    if (dictionary.phonetic) {
+      phonetic.textContent = dictionary.phonetic;
+      result.phonetic = dictionary.phonetic;
+    }
+
+    if (dictionary.bilingual.length) {
+      dictionaryBox.appendChild(sectionTitle(toolbarText('bilingual')));
+      const list = el('div', { marginTop: '4px' });
+      list.className = 'coco-dict-bilingual';
+      dictionary.bilingual.forEach(group => {
+        const row = el('div', { marginTop: '4px' });
+        row.className = 'coco-dict-sense';
+        row.append(posTag(group.pos), document.createTextNode(group.terms.join(uiLanguage === 'zh' ? '、' : ', ')));
+        list.appendChild(row);
+      });
+      dictionaryBox.appendChild(list);
+      result.meanings = summarizeMeanings(dictionary);
+    }
+
+    if (dictionary.definitions.length) {
+      dictionaryBox.appendChild(sectionTitle(toolbarText('definitions')));
+      dictionary.definitions.forEach(group => {
+        const block = el('div', { marginTop: '6px' });
+        block.className = 'coco-dict-definition';
+        block.appendChild(posTag(group.pos));
+        const items = el('ol', { margin: '4px 0 0', paddingLeft: '20px', fontSize: '13px' });
+        group.items.forEach(item => {
+          const li = el('li', { marginTop: '2px' }, item.definition);
+          if (item.example) {
+            li.appendChild(el('div', { color: 'var(--coco-muted)', fontStyle: 'italic' }, `“${item.example}”`));
+          }
+          items.appendChild(li);
+        });
+        block.appendChild(items);
+        dictionaryBox.appendChild(block);
+      });
+    }
+    refreshSaveButton();
+  };
+
+  // 譯文和字典分開查，誰先回來誰先顯示
   requestTranslations('trigger', [word], targetLanguage, 'text', { quiet: true }).then(({ translations, error }) => {
     if (card !== wordCard) return;   // 已經關掉或換了一張
     if (error) {
@@ -1336,33 +1426,28 @@ function showWordCard(info) {
     }
     translation.textContent = translations[0];
     result.translation = translations[0];
-    setSaveEnabled(true);
+    refreshSaveButton();
   });
 
-  chrome.runtime.sendMessage({ type: 'LOOKUP_DICTIONARY', word }, response => {
+  chrome.runtime.sendMessage({ type: 'LOOKUP_DICTIONARY', word, targetLang: targetLanguage }, response => {
     if (chrome.runtime.lastError || card !== wordCard) return;
-    const dictionary = response?.dictionary;
-    if (!dictionary) return;
-    phonetic.textContent = dictionary.phonetic || '';
-    result.phonetic = dictionary.phonetic || '';
-    dictionary.meanings.forEach(meaning => {
-      const item = el('li', {}, `${meaning.partOfSpeech ? `(${meaning.partOfSpeech}) ` : ''}${meaning.definition}`);
-      definitions.appendChild(item);
-    });
+    renderDictionary(response?.dictionary || null);
   });
 
   saveButton.addEventListener('click', async () => {
     await addToVocabulary({
       word,
       translation: result.translation,
+      meanings: result.meanings,
       phonetic: result.phonetic,
       context: info.context && info.context !== word ? info.context : '',
       url: location.href,
       title: document.title,
       addedAt: Date.now()
     });
+    saved = true;
     saveButton.textContent = toolbarText('saved');
-    setSaveEnabled(false);
+    refreshSaveButton();
   });
 }
 

@@ -1,12 +1,13 @@
 {
   "name": "coco-translate",
-  "version": "1.4.0.0",
+  "version": "1.5.0.0",
   "private": true,
   "description": "CoCo Translate browser extension (Chrome & Firefox)",
   "scripts": {
     "build": "node scripts/build.mjs",
     "build:chrome": "node scripts/build.mjs chrome",
     "build:firefox": "node scripts/build.mjs firefox",
+    "bump": "node scripts/bump.mjs",
     "test": "node --test tests/*.test.mjs"
   }
 }

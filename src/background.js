@@ -208,7 +208,12 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
 
 // 快捷鍵：用瀏覽器內建的擴充功能快捷鍵，使用者可以在瀏覽器的快捷鍵設定頁自訂或清空停用
 const commandHandlers = {
-  'toggle-page-translation': togglePageTranslation
+  'toggle-page-translation': togglePageTranslation,
+  // 整頁翻譯顯示方式：取代原文 ⇄ 雙語對照（每個分頁的 content script 會自己跟著切換）
+  'toggle-display-mode': async () => {
+    const { pageDisplayMode } = await storageGet(['pageDisplayMode']);
+    await storageSet({ pageDisplayMode: pageDisplayMode === 'bilingual' ? 'replace' : 'bilingual' });
+  }
 };
 
 chrome.commands?.onCommand.addListener(async (command, tab) => {

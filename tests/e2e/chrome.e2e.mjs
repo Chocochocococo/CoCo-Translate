@@ -239,6 +239,43 @@ try {
     assert.equal(body.replace(/\s+/g, ' ').trim(), originalHTML.replace(/\s+/g, ' ').trim());
   });
 
+  // 3-1. 雙語對照
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await sw.evaluate(() => chrome.storage.local.set({ pageDisplayMode: 'bilingual' }));
+  await sw.evaluate(id => chrome.tabs.sendMessage(id, { type: 'TRANSLATE_PAGE' }), tabId);
+  await page.waitForSelector('#p1 .coco-bilingual', { timeout: 3000 }).catch(() => {});
+  await page.waitForTimeout(300);
+  await check('雙語對照：原文不動，譯文插在下方', async () => {
+    assert.equal(await page.evaluate(() => document.querySelector('#p1').firstChild.textContent), 'Hello ');
+    assert.equal(await page.textContent('#p1 .coco-bilingual'), '[譯]Hello brave world');
+    assert.equal(await page.textContent('#p1 .coco-bilingual b'), 'brave');
+  });
+  await check('雙語對照：譯文照中文語序，樣式跟著走，原文順序不變', async () => {
+    assert.equal(await page.textContent('#order .coco-bilingual'), '他對她說你好。');
+    assert.equal(await page.textContent('#order .coco-bilingual i'), '她');
+    assert.equal(await page.locator('#order .coco-bilingual [id]').count(), 0, '複製的元素不能帶重複的 id');
+    assert.deepEqual(await page.$$eval('#order > [id]', els => els.map(el => el.id)), ['bold', 'italic']);
+  });
+  await check('雙語對照：標籤對不回去就放純文字', async () => {
+    assert.equal(await page.textContent('#broken .coco-bilingual'), '[譯]Click here now');
+    assert.equal(await page.textContent('#link'), 'here');
+  });
+  await check('雙語對照：<br> 分行的每一行各有譯文', async () => {
+    assert.equal(await page.locator('#novel .coco-bilingual').count(), 2);
+  });
+  await sw.evaluate(() => commandHandlers['toggle-display-mode']());
+  await check('雙語對照：用快捷鍵切回取代原文', async () => {
+    await page.waitForFunction(() => document.querySelector('#order').textContent === '他對她說你好。', null, { timeout: 3000 });
+    assert.equal(await page.locator('.coco-bilingual').count(), 0);
+    const { pageDisplayMode } = await sw.evaluate(() => chrome.storage.local.get('pageDisplayMode'));
+    assert.equal(pageDisplayMode, 'replace');
+  });
+  await sw.evaluate(id => chrome.tabs.sendMessage(id, { type: 'RESTORE_PAGE' }), tabId);
+  await page.waitForTimeout(300);
+  await check('雙語對照：還原後回到原文', async () => {
+    assert.equal(await page.textContent('#order'), 'He said hello to her.');
+  });
+
   // 4. 觸發式翻譯（滑鼠 + 右 Ctrl）
   await sw.evaluate(() => chrome.storage.local.set({ siteTranslationList: [] }));
   await page.reload();

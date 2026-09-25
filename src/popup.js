@@ -870,6 +870,15 @@ document.addEventListener('DOMContentLoaded', async () => {
   });    
   */
 
+// 整頁翻譯顯示方式（改了馬上生效，翻譯中的分頁會自動重新排）
+const pageDisplayModeSelect = document.getElementById('pageDisplayMode');
+chrome.storage.local.get(['pageDisplayMode'], data => {
+  pageDisplayModeSelect.value = data.pageDisplayMode === 'bilingual' ? 'bilingual' : 'replace';
+});
+pageDisplayModeSelect.addEventListener('change', () => {
+  chrome.storage.local.set({ pageDisplayMode: pageDisplayModeSelect.value });
+});
+
 // 自訂右鍵選單
 const contextMenuSelect = document.getElementById('radio');
 contextMenuSelect.addEventListener('change', function() {

@@ -76,6 +76,9 @@
         "mac": "MacCtrl+Shift+Y"
       },
       "description": "Translate / restore this page"
+    },
+    "toggle-display-mode": {
+      "description": "Switch page translation between replace and bilingual"
     }
   }
 }

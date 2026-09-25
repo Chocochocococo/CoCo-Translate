@@ -36,6 +36,9 @@ const i18nStrings = {
       useDiskCacheLabelID: "Enable local cached translation",
       clearCacheBtnID: "Clear Cache",
       shortcutLabelID: "Shortcut:",
+      pageDisplayModeLabelID: "Page Translation:",
+      displayReplace: "Replace Original",
+      displayBilingual: "Bilingual",
       openShortcutSettingsBtnID: "Set Shortcuts",
       Importrexgexpatterns: "Import Regex Patterns",
       Importrexgexpatternsdes: "Select your custom Regular Expression JSON file and load it into the extension. Importing will overwrite the existing patterns.",
@@ -91,6 +94,9 @@ const i18nStrings = {
       useDiskCacheLabelID: "啟用本地快取譯文",
       clearCacheBtnID: "清除快取",
       shortcutLabelID: "快捷鍵：",
+      pageDisplayModeLabelID: "整頁翻譯顯示：",
+      displayReplace: "取代原文",
+      displayBilingual: "雙語對照",
       openShortcutSettingsBtnID: "設定快捷鍵",
       Importrexgexpatterns: "匯入正規表達式",
       Importrexgexpatternsdes: "選擇你的自訂正規表達式 JSON 檔案，並加載到擴充功能中。匯入後會覆蓋現有的正規表達式。",
@@ -123,6 +129,11 @@ const i18nStrings = {
     setText("useDiskCacheLabel", dict.useDiskCacheLabelID);
     setText("clearCacheBtn", dict.clearCacheBtnID);
     setText("shortcutLabel", dict.shortcutLabelID);
+    setText("pageDisplayModeLabel", dict.pageDisplayModeLabelID);
+    const optReplace = document.querySelector('#pageDisplayMode option[value="replace"]');
+    const optBilingual = document.querySelector('#pageDisplayMode option[value="bilingual"]');
+    if (optReplace) optReplace.textContent = dict.displayReplace;
+    if (optBilingual) optBilingual.textContent = dict.displayBilingual;
     setText("openShortcutSettingsBtn", dict.openShortcutSettingsBtnID);
 
     // Options 頁（匯入正規表達式）

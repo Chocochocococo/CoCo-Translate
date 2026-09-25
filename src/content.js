@@ -5,6 +5,7 @@ let isEnabled = true,
     isPageTranslationMode = false,
     isRestoring = false,
     showOriginalTooltip = true,
+    pageDisplayMode = 'replace',   // 整頁翻譯：replace 取代原文、bilingual 雙語對照
     inputTargetLanguage = 'en';
 let currentHoveredElement = null,
     isRightCtrlPressed = false;
@@ -23,7 +24,8 @@ let triggerKey = 'ControlRight';
 let selectionTranslationButton, floatingButton, inputBox, translationBox, translationBoxContent, tooltip, translateBtn;
 let cursorPosition = { x: 0, y: 0 };
 
-chrome.storage.local.get(['isEnabled', 'targetLanguage', 'triggerKey', 'enableSelectionButton', 'showOriginalTooltip'], data => {
+chrome.storage.local.get(['isEnabled', 'targetLanguage', 'triggerKey', 'enableSelectionButton', 'showOriginalTooltip', 'pageDisplayMode'], data => {
+  pageDisplayMode = data.pageDisplayMode === 'bilingual' ? 'bilingual' : 'replace';
   isEnabled = data.isEnabled ?? true;
   targetLanguage = data.targetLanguage || 'zh-TW';
   triggerKey = data.triggerKey || 'ControlRight';
@@ -220,7 +222,7 @@ const splitWhitespace = text => {
 const SKIP_TAGS = new Set(['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE', 'TEXTAREA']);
 // CoCo 自己的介面
 const SKIP_SELECTOR = [
-  '.immersive-translation-container', '#custom-context-menu', '#input-box', '#translation-box',
+  '.immersive-translation-container', '.coco-bilingual', '#custom-context-menu', '#input-box', '#translation-box',
   '#original-text-tooltip', '#copy-tooltip', '#coco-error-toast'
 ].join(', ');
 
@@ -346,6 +348,7 @@ const BLOCK_SELECTOR = 'address, article, aside, blockquote, details, dialog, dd
   'figure, footer, form, h1, h2, h3, h4, h5, h6, header, hgroup, hr, li, main, nav, ol, p, pre, section, table, ul, select, br';
 // 太長的一段就不整段送了（通常是沒有分段的怪網頁），直接用舊方式
 const MAX_UNIT_CHARS = 3000;
+const BILINGUAL_MAX_UNIT_CHARS = 8000;
 
 let translatedUnits = [];   // 整頁翻譯時套用過的段落，還原用
 
@@ -355,7 +358,7 @@ const isPreformatted = element => {
   return /^pre/.test(getComputedStyle(element).whiteSpace || '');
 };
 
-function buildUnit(parent, nodes) {
+function buildUnit(parent, nodes, { maxChars = MAX_UNIT_CHARS } = {}) {
   const preserveWhitespace = isPreformatted(parent);
   const elements = new Map();       // id → { el, atomic }
   const expectedParents = {};       // id → 父元素 id（最外層為 null）
@@ -380,7 +383,7 @@ function buildUnit(parent, nodes) {
 
   const html = nodes.map(node => serialize(node, null)).join('');
   const core = html.trim();
-  if (!core || core.length > MAX_UNIT_CHARS) return null;
+  if (!core || core.length > maxChars) return null;
   return {
     parent,
     nodes,
@@ -399,7 +402,7 @@ function buildUnit(parent, nodes) {
  * 找出 root 底下所有要翻的段落
  * @returns {{ units: Object[], fragmentNodes: Text[] }} fragmentNodes：只能用舊方式逐片段翻的文字節點
  */
-function collectUnits(root, { fromMutation = false } = {}) {
+function collectUnits(root, { fromMutation = false, bilingual = false } = {}) {
   const units = [];
   const fragmentNodes = [];
   if (!root || root.nodeType !== Node.ELEMENT_NODE) return { units, fragmentNodes };
@@ -428,6 +431,12 @@ function collectUnits(root, { fromMutation = false } = {}) {
     // 已經翻過的段落就跳過；翻過之後網頁又改了其中幾個字，就只用舊方式翻改掉的部分
     const fresh = meaningful.filter(n => translatedTextMap.get(n) !== n.textContent);
     if (!fresh.length) return;
+    if (bilingual) {
+      // 雙語對照不動原文，沒有「逐片段換掉原文」這條退路：整段重翻、重新插一次譯文
+      const unit = buildUnit(parent, run, { maxChars: BILINGUAL_MAX_UNIT_CHARS });
+      if (unit) units.push(Object.assign(unit, { bilingual: true }));
+      return;
+    }
     if (fresh.length !== meaningful.length) {
       fragmentNodes.push(...fresh);
       return;
@@ -542,6 +551,49 @@ function applyUnit(unit, translated, { live }) {
   return 'applied';
 }
 
+// ---------------- 雙語對照：原文不動，譯文另外插在這一段後面 ----------------
+const bilingualWrappers = new WeakMap();   // 段落最後一個節點 → 插在它後面的譯文
+
+function applyUnitBilingual(unit, translated) {
+  if (!isPageTranslationMode) return 'stale';
+  if (unit.textNodes.some(n => n.textContent !== unit.originalTexts.get(n))) return 'stale';
+  const last = unit.nodes[unit.nodes.length - 1];
+  if (last.parentNode !== unit.parent) return 'stale';
+
+  const wrapper = document.createElement('font');
+  wrapper.className = 'coco-bilingual';
+  Object.assign(wrapper.style, { display: 'block', marginTop: '0.25em' });
+
+  const tree = Markup.parse(translated);
+  if (Markup.matchesStructure(tree, unit.expectedParents)) {
+    // 行內樣式用原元素的淺層複製（連結、粗體照樣有），圖片、表單元件不重複放
+    const render = (items, target) => items.forEach(item => {
+      if (item.type === 'text') {
+        target.appendChild(document.createTextNode(item.text));
+        return;
+      }
+      const entry = unit.elements.get(item.id);
+      if (entry.atomic) return;
+      const clone = entry.el.cloneNode(false);
+      clone.removeAttribute('id');
+      render(item.children, clone);
+      target.appendChild(clone);
+    });
+    render(tree.children, wrapper);
+  } else {
+    // 標籤對不回去就只放純文字
+    wrapper.textContent = Markup.stripTags(translated);
+  }
+  if (!wrapper.textContent.trim()) return 'stale';
+
+  bilingualWrappers.get(last)?.remove();
+  bilingualWrappers.set(last, wrapper);
+  unit.parent.insertBefore(wrapper, last.nextSibling);
+  // 原文沒變，但要記成「翻過了」，網頁變動時才不會重翻
+  unit.textNodes.forEach(n => translatedTextMap.set(n, n.textContent));
+  return 'applied';
+}
+
 // 還原整頁翻譯套用過的段落（後套用的先還原）
 function restoreUnits() {
   for (const snapshot of translatedUnits.reverse()) {
@@ -560,6 +612,7 @@ function restoreUnits() {
     }
   }
   translatedUnits = [];
+  document.querySelectorAll('.coco-bilingual').forEach(wrapper => wrapper.remove());
 }
 
 /**
@@ -570,7 +623,8 @@ async function translateUnitsNow(units, fragmentNodes, { fromMutation = false } 
   await translateJobs('page', units.map(unit => ({
     text: unit.html,
     apply: translated => {
-      if (applyUnit(unit, translated, { live: true }) === 'invalid') failed.push(unit);
+      if (unit.bilingual) applyUnitBilingual(unit, translated);
+      else if (applyUnit(unit, translated, { live: true }) === 'invalid') failed.push(unit);
     }
   })), targetLanguage, 'html');
 
@@ -730,7 +784,7 @@ const translatePage = async () => {
   isPageTranslationMode = true;
   hideTranslationButton();
   startAutoTranslationObserver();
-  const { units, fragmentNodes } = collectUnits(document.body);
+  const { units, fragmentNodes } = collectUnits(document.body, { bilingual: pageDisplayMode === 'bilingual' });
   await translatePageUnits(units, fragmentNodes);
   await translateJobs('page', [...collectTextareaJobs(), ...collectAttributeJobs()], targetLanguage);
 };
@@ -846,7 +900,7 @@ const startAutoTranslationObserver = () => {
         fragmentNodes.push(node);
         continue;
       }
-      const collected = collectUnits(node, { fromMutation: true });
+      const collected = collectUnits(node, { fromMutation: true, bilingual: pageDisplayMode === 'bilingual' });
       units.push(...collected.units);
       fragmentNodes.push(...collected.fragmentNodes);
     }
@@ -913,7 +967,8 @@ document.addEventListener('mouseover', e => {
 document.addEventListener('mouseout', () => currentHoveredElement = null);
 document.addEventListener('mousemove', e => {
   cursorPosition = { x: e.clientX, y: e.clientY };
-  if (isPageTranslationMode && showOriginalTooltip) {
+  // 雙語對照時原文本來就看得到，不用提示
+  if (isPageTranslationMode && showOriginalTooltip && pageDisplayMode !== 'bilingual') {
     const container = getClosestContentContainer(e.target);
     if (container) {
       const tagName = container.tagName.toLowerCase();
@@ -1540,6 +1595,14 @@ chrome.storage.onChanged.addListener((changes, namespace) => {
   if (changed('inputTargetLanguage')) inputTargetLanguage = changes.inputTargetLanguage.newValue || 'en';
   if (changed('triggerKey')) triggerKey = changes.triggerKey.newValue || 'ControlRight';
   if (changed('showOriginalTooltip')) showOriginalTooltip = changes.showOriginalTooltip.newValue !== false;
+  if (changed('pageDisplayMode')) {
+    pageDisplayMode = changes.pageDisplayMode.newValue === 'bilingual' ? 'bilingual' : 'replace';
+    // 翻譯中途切換顯示方式：還原後用新方式重來（譯文都在快取裡，很快）
+    if (isPageTranslationMode) {
+      restorePage();
+      translatePage();
+    }
+  }
   if (changed('enableSelectionButton')) applySelectionButtonSetting(changes.enableSelectionButton.newValue !== false);
   if (changed('enableFloatingButton')) applyFloatingButtonSetting(changes.enableFloatingButton.newValue !== false);
 });

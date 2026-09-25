@@ -260,3 +260,35 @@ test('TranslationService: 開啟本地快取時會寫入並讀回', async () => 
   assert.deepEqual(again.translations, ['世界']);
   assert.equal(calls, 1);
 });
+
+// ---------------------------------------------------------------- 不用預填充
+test('OpenAICompatibleTranslator: 只送 system + user，不用 assistant 預填充', async () => {
+  const { context, fetchCalls } = loadBackground({
+    fetch: async (url, init) => {
+      const body = JSON.parse(init.body);
+      return body.response_format ? chatResponse('{"segments":["一","二"]}') : chatResponse('一');
+    }
+  });
+  const translator = new context.OpenAICompatibleTranslator({ provider: 'mistral', apiKey: 'k' });
+  await translator.translateBatch(['one'], 'zh-TW');
+  await translator.translateBatch(['one', 'two'], 'zh-TW');
+  await translator.translateBatch(['<b id="g0">one</b>'], 'zh-TW', 'auto', { html: true });
+  for (const call of fetchCalls) {
+    const body = JSON.parse(call.init.body);
+    assert.deepEqual(body.messages.map(m => m.role), ['system', 'user']);
+    assert.ok(body.messages.every(m => !('prefix' in m)), '不能帶 Mistral 專用的 prefix');
+  }
+});
+
+test('PostProcess: 砍掉模型自己加的開場白，但不誤砍譯文', () => {
+  const { context } = loadBackground();
+  const clean = context.PostProcess.cleanLLMOutput;
+  assert.equal(clean("Here's the translation into Traditional Chinese:\n你好，世界"), '你好，世界');
+  assert.equal(clean('Sure! Here is the translated text:\n\n你好'), '你好');
+  assert.equal(clean('以下是翻譯結果：\n你好'), '你好');
+  assert.equal(clean('翻譯：\n你好'), '你好');
+  // 這些是真正的譯文，不能砍
+  assert.equal(clean('這裡是我的家：\n溫暖又舒適'), '這裡是我的家：\n溫暖又舒適');
+  assert.equal(clean('Here is my home: warm and cozy'), 'Here is my home: warm and cozy');
+  assert.equal(clean('他說：\n「你好」'), '他說：\n「你好」');
+});

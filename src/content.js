@@ -105,6 +105,75 @@ const describeError = error => {
   return `${error.provider ? error.provider + '：' : ''}${title}`;
 };
 
+// ---------------- 網頁裡的 UI 外觀：跟 popup 同一個設定（自動／淺色／深色） ----------------
+// 顏色做成 --coco-* 變數掛在我們自己的元素上，inline style 用 var(--coco-…)；
+// 不碰網頁的 <html>，也不用塞 <style>（有些網站的 CSP 會擋）
+const PageTheme = (() => {
+  const PALETTES = {
+    light: {
+      '--coco-surface': '#ffffff',
+      '--coco-surface-2': '#eef4e8',
+      '--coco-border': '#e3ead9',
+      '--coco-text': '#2e3a2a',
+      '--coco-muted': '#7b8a73',
+      '--coco-accent': '#5cb87a',
+      '--coco-accent-ink': '#ffffff',
+      '--coco-shadow': '0 6px 20px rgba(60, 80, 50, 0.22)',
+      '--coco-input-bg': 'rgba(200, 255, 200, 0.5)',
+      '--coco-output-bg': 'rgba(240, 255, 240, 0.5)',
+      '--coco-scheme': 'light'
+    },
+    // 他媽的，晚上看小說不刺眼
+    dark: {
+      '--coco-surface': '#212724',
+      '--coco-surface-2': '#2a312d',
+      '--coco-border': '#3a443e',
+      '--coco-text': '#e6ece8',
+      '--coco-muted': '#95a39b',
+      '--coco-accent': '#5ccb93',
+      '--coco-accent-ink': '#0f2219',
+      '--coco-shadow': '0 6px 20px rgba(0, 0, 0, 0.5)',
+      '--coco-input-bg': 'rgba(33, 52, 42, 0.92)',
+      '--coco-output-bg': 'rgba(28, 36, 32, 0.92)',
+      '--coco-scheme': 'dark'
+    }
+  };
+  const media = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+  const elements = new Set();
+  let mode = 'auto';
+
+  const resolved = () => (mode === 'dark' || (mode === 'auto' && media?.matches) ? 'dark' : 'light');
+
+  const paint = element => {
+    const theme = resolved();
+    Object.entries(PALETTES[theme]).forEach(([name, value]) => element.style.setProperty(name, value));
+    element.dataset.cocoTheme = theme;
+  };
+
+  const refresh = () => elements.forEach(element => {
+    // 單字卡這種關掉就丟的元素，不在頁面上了就別再管它
+    if (element.isConnected) paint(element);
+    else elements.delete(element);
+  });
+
+  const setMode = value => {
+    mode = ['auto', 'light', 'dark'].includes(value) ? value : 'auto';
+    refresh();
+  };
+
+  chrome.storage.local.get(['uiTheme'], data => setMode(data.uiTheme));
+  media?.addEventListener?.('change', refresh);
+
+  // 元素建立時登記一次，之後切換外觀會自動重畫
+  const register = element => {
+    elements.add(element);
+    paint(element);
+    return element;
+  };
+
+  return { register, setMode, resolved };
+})();
+
 // 同樣的錯誤 10 秒內只提示一次，別整頁翻譯時噴一百個
 let errorToast = null;
 let errorToastTimer = null;
@@ -1089,15 +1158,17 @@ const createTranslationButton = () => {
   if (selectionTranslationButton) return;
   selectionTranslationButton = document.createElement('div');
   selectionTranslationButton.id = 'coco-selection-toolbar';
+  PageTheme.register(selectionTranslationButton);
   Object.assign(selectionTranslationButton.style, {
     position: 'absolute',
     zIndex: '10000',
     display: 'none',
     gap: '2px',
-    padding: '2px',
-    background: 'rgba(255, 255, 255, 0.95)',
-    borderRadius: '8px',
-    boxShadow: '0 2px 8px rgba(0,0,0,0.2)'
+    padding: '3px',
+    background: 'var(--coco-surface)',
+    border: '1px solid var(--coco-border)',
+    borderRadius: '999px',
+    boxShadow: 'var(--coco-shadow)'
   });
 
   const makeButton = (content, titleKey, onClick) => {
@@ -1113,11 +1184,15 @@ const createTranslationButton = () => {
       width: '30px',
       height: '30px',
       border: 'none',
+      borderRadius: '50%',
       background: 'transparent',
       cursor: 'pointer',
       fontSize: '17px',
-      padding: '0'
+      padding: '0',
+      transition: 'background 0.15s'
     });
+    button.addEventListener('mouseenter', () => { button.style.background = 'var(--coco-surface-2)'; });
+    button.addEventListener('mouseleave', () => { button.style.background = 'transparent'; });
     // 按下去時別讓按鈕搶走網頁上的選取
     button.addEventListener('mousedown', e => e.preventDefault());
     button.addEventListener('click', e => {
@@ -1186,6 +1261,7 @@ function showWordCard(info) {
 
   wordCard = document.createElement('div');
   wordCard.id = 'coco-word-card';
+  PageTheme.register(wordCard);
   const width = 320;
   const left = Math.min(Math.max(8, info.rect.left), window.innerWidth - width - 8);
   const below = info.rect.bottom + 8;
@@ -1196,13 +1272,16 @@ function showWordCard(info) {
     width: `${width}px`,
     maxHeight: '320px',
     overflowY: 'auto',
-    padding: '12px 14px',
-    background: '#fff',
-    color: '#222',
-    font: '14px/1.5 system-ui, sans-serif',
+    padding: '14px 16px',
+    background: 'var(--coco-surface)',
+    color: 'var(--coco-text)',
+    colorScheme: 'var(--coco-scheme)',
+    font: '14px/1.5 system-ui, "Microsoft JhengHei", "PingFang TC", sans-serif',
     textAlign: 'left',
-    borderRadius: '10px',
-    boxShadow: '0 6px 20px rgba(0,0,0,0.25)',
+    border: '1px solid var(--coco-border)',
+    borderRadius: '16px',
+    boxShadow: 'var(--coco-shadow)',
+    boxSizing: 'border-box',
     zIndex: '10005'
   });
 
@@ -1214,8 +1293,8 @@ function showWordCard(info) {
   };
 
   const header = el('div', { display: 'flex', alignItems: 'baseline', gap: '8px', flexWrap: 'wrap' });
-  const title = el('strong', { fontSize: '17px' }, word);
-  const phonetic = el('span', { color: '#666' });
+  const title = el('strong', { fontSize: '17px', color: 'var(--coco-text)' }, word);
+  const phonetic = el('span', { color: 'var(--coco-muted)' });
   phonetic.className = 'coco-phonetic';
   const speakButton = el('button', { border: 'none', background: 'none', cursor: 'pointer', fontSize: '16px', padding: '0' }, '🔊');
   speakButton.title = toolbarText('speak');
@@ -1224,16 +1303,22 @@ function showWordCard(info) {
 
   const translation = el('div', { marginTop: '6px', fontSize: '15px' }, toolbarText('loading'));
   translation.className = 'coco-word-translation';
-  const definitions = el('ul', { margin: '6px 0 0', paddingLeft: '18px', color: '#444', fontSize: '13px' });
-  const context = el('div', { marginTop: '8px', color: '#666', fontSize: '12px', fontStyle: 'italic' });
+  const definitions = el('ul', { margin: '6px 0 0', paddingLeft: '18px', color: 'var(--coco-text)', opacity: '0.85', fontSize: '13px' });
+  const context = el('div', { marginTop: '8px', color: 'var(--coco-muted)', fontSize: '12px', fontStyle: 'italic' });
   if (info.context && info.context !== word) context.textContent = `${toolbarText('context')}：${info.context}`;
 
   const footer = el('div', { display: 'flex', gap: '8px', marginTop: '10px' });
-  const buttonStyle = { padding: '4px 10px', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px' };
-  const saveButton = el('button', { ...buttonStyle, background: '#3498db', color: '#fff' }, toolbarText('save'));
+  const buttonStyle = { padding: '5px 14px', border: 'none', borderRadius: '999px', cursor: 'pointer', font: '600 13px system-ui, sans-serif' };
+  const saveButton = el('button', { ...buttonStyle, background: 'var(--coco-accent)', color: 'var(--coco-accent-ink)' }, toolbarText('save'));
   saveButton.className = 'coco-save-word';
-  saveButton.disabled = true;
-  const closeButton = el('button', { ...buttonStyle, background: '#e0e0e0', color: '#333' }, toolbarText('close'));
+  // 還沒查到譯文、或已經收藏了 → 按鈕變淡
+  const setSaveEnabled = enabled => {
+    saveButton.disabled = !enabled;
+    saveButton.style.opacity = enabled ? '1' : '0.5';
+    saveButton.style.cursor = enabled ? 'pointer' : 'default';
+  };
+  setSaveEnabled(false);
+  const closeButton = el('button', { ...buttonStyle, background: 'var(--coco-surface-2)', color: 'var(--coco-text)' }, toolbarText('close'));
   closeButton.addEventListener('click', hideWordCard);
   footer.append(saveButton, closeButton);
 
@@ -1253,7 +1338,7 @@ function showWordCard(info) {
     } else {
       translation.textContent = response.translation;
       result.translation = response.translation;
-      saveButton.disabled = false;
+      setSaveEnabled(true);
     }
     const dictionary = response.dictionary;
     if (dictionary) {
@@ -1277,7 +1362,7 @@ function showWordCard(info) {
       addedAt: Date.now()
     });
     saveButton.textContent = toolbarText('saved');
-    saveButton.disabled = true;
+    setSaveEnabled(false);
   });
 }
 
@@ -1572,14 +1657,17 @@ const createTranslationBoxes = () => {
   // 建立輸入區域
   inputBox = document.createElement('textarea');
   inputBox.id = 'input-box';
+  PageTheme.register(inputBox);
   Object.assign(inputBox.style, {
     position: 'fixed',
     top: '20px',
     left: '20px',
     width: '350px',
     height: '60px',
-    background: 'rgba(200, 255, 200, 0.5)',
-    border: '1px solid #ccc',
+    background: 'var(--coco-input-bg)',
+    color: 'var(--coco-text)',
+    colorScheme: 'var(--coco-scheme)',
+    border: '1px solid var(--coco-border)',
     borderRadius: '8px',
     boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
     zIndex: '10001',
@@ -1589,14 +1677,17 @@ const createTranslationBoxes = () => {
   // 建立翻譯結果顯示區域
   translationBox = document.createElement('div');
   translationBox.id = 'translation-box';
+  PageTheme.register(translationBox);
   Object.assign(translationBox.style, {
     position: 'fixed',
     top: '90px',
     left: '20px',
     width: '350px',
     height: '100px',
-    background: 'rgba(240,255,240,0.5)',
-    border: '1px solid #ccc',
+    background: 'var(--coco-output-bg)',
+    color: 'var(--coco-text)',
+    colorScheme: 'var(--coco-scheme)',
+    border: '1px solid var(--coco-border)',
     borderRadius: '8px',
     boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
     zIndex: '10001',
@@ -1811,6 +1902,7 @@ chrome.storage.onChanged.addListener((changes, namespace) => {
     if (!isEnabled) removeAllTranslations();
   }
   if (changed('myLang')) uiLanguage = changes.myLang.newValue || 'zh';
+  if (changed('uiTheme')) PageTheme.setMode(changes.uiTheme.newValue);
   if (changed('targetLanguage')) targetLanguage = changes.targetLanguage.newValue || 'zh-TW';
   if (changed('inputTargetLanguage')) inputTargetLanguage = changes.inputTargetLanguage.newValue || 'en';
   if (changed('triggerKey')) triggerKey = changes.triggerKey.newValue || 'ControlRight';

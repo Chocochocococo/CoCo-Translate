@@ -467,6 +467,33 @@ try {
     assert.equal(vocabulary[0].translation, '[譯]serendipity');
     assert.equal(vocabulary[0].context, 'Books are full of serendipity.');
   });
+  // 外觀：網頁裡的工具列、單字卡跟 popup 同一個設定
+  const cocoColors = () => page.evaluate(() => ({
+    card: getComputedStyle(document.querySelector('#coco-word-card')).backgroundColor,
+    text: getComputedStyle(document.querySelector('#coco-word-card')).color,
+    toolbar: getComputedStyle(document.querySelector('#coco-selection-toolbar')).backgroundColor
+  }));
+  await check('外觀：工具列、單字卡預設淺色', async () => {
+    const colors = await cocoColors();
+    assert.equal(colors.card, 'rgb(255, 255, 255)');
+    assert.equal(colors.toolbar, 'rgb(255, 255, 255)');
+  });
+  await sw.evaluate(() => chrome.storage.local.set({ uiTheme: 'dark' }));
+  await check('外觀：切成深色，開著的單字卡、工具列馬上跟著變', async () => {
+    await page.waitForFunction(() => document.querySelector('#coco-word-card').dataset.cocoTheme === 'dark', null, { timeout: 3000 });
+    assert.deepEqual(await cocoColors(), { card: 'rgb(33, 39, 36)', text: 'rgb(230, 236, 232)', toolbar: 'rgb(33, 39, 36)' });
+  });
+  await sw.evaluate(() => chrome.storage.local.set({ uiTheme: 'auto' }));
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await check('外觀：自動模式跟著系統的深色設定', async () => {
+    await page.waitForFunction(() => document.querySelector('#coco-word-card').dataset.cocoTheme === 'dark', null, { timeout: 3000 });
+    assert.equal((await cocoColors()).card, 'rgb(33, 39, 36)');
+  });
+  await page.emulateMedia({ colorScheme: 'light' });
+  await check('外觀：系統切回淺色，自動模式也切回來', async () => {
+    await page.waitForFunction(() => document.querySelector('#coco-word-card').dataset.cocoTheme === 'light', null, { timeout: 3000 });
+    assert.equal((await cocoColors()).card, 'rgb(255, 255, 255)');
+  });
   await page.keyboard.press('Escape');
   await check('單字卡：按 Esc 關閉', async () => {
     assert.equal(await page.locator('#coco-word-card').count(), 0);

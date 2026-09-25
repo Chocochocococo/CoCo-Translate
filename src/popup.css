@@ -6,9 +6,9 @@ body {
   background-color: #f9f9f9; /* 幹，背景色溫柔又舒服 */
   color: #333; /* 他媽的，字色夠清楚 */
   width: 450px; /* 靠北，固定寬度讓人安心 */
-  height: 600px; /* 幹，自動高度，讓你一次看夠，滾條滾蛋！ */
+  max-height: 600px; /* 幹，瀏覽器的彈窗最高就 600px，超過會被切掉 */
   box-sizing: border-box; /* 他媽的，盒模型正確計算 */
-  overflow: visible; /* 靠北，不允許那該死的滾動條出現 */
+  overflow-y: auto; /* 靠北，排得下就沒有滾動條，真的排不下才出現，總比被切掉好 */
 }
 
 .container {
@@ -314,13 +314,48 @@ body {
   line-height: 1.4;
 }
 
-/* 快捷鍵那一列 - 幹，小小一行就夠了 */
+/* 快捷鍵 - 幹，擠在「整頁翻譯顯示」旁邊剛剛好 */
 .shortcut-row {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-top: 8px;
+  gap: 6px;
+  width: 200px;
   font-size: 13px;
+}
+
+.shortcut-row .btn {
+  padding: 6px 4px;
+}
+
+/* 介面語言跟選單放同一行 - 他媽的，省一行是一行 */
+.lang-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* 勾選框排兩欄 - 靠北，一個一行太佔位置了 */
+.checkbox-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 5px 10px;
+}
+
+.checkbox-grid .label {
+  display: flex; /* 他媽的，換行的時候第二行要跟文字對齊，別跑到勾選框底下 */
+  align-items: flex-start;
+  gap: 4px;
+  font-size: 13px;
+}
+
+.checkbox-grid .label input {
+  margin: 2px 0 0;
+  flex-shrink: 0;
+}
+
+/* 四個按鈕一排 - 幹，彈窗就這麼高，別浪費 */
+.buttons-4 .btn {
+  padding: 8px 4px;
 }
 
 .shortcut-row kbd {

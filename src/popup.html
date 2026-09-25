@@ -16,11 +16,13 @@
     <!-- 一般設定分頁 -->
     <div id="contentGeneral" class="tab-content active">
       <div class="section">
-        <label id="uiLanguageLabel" for="languageSelector">UI Language:</label>
-        <select id="languageSelector">
-          <option value="en">English</option>
-          <option value="zh">中文</option>
-        </select>
+        <div class="lang-row">
+          <label id="uiLanguageLabel" for="languageSelector">UI Language:</label>
+          <select id="languageSelector">
+            <option value="en">English</option>
+            <option value="zh">中文</option>
+          </select>
+        </div>
         <label class="label">
           <input type="checkbox" id="alwaysTranslateCheckbox" class="input-checkbox">
           <span id="alwaysTranslateLabel">Always translate this site</span>
@@ -28,6 +30,7 @@
           <button id="openGlossaryBtn" class="link-btn" type="button">Glossary</button>
           <button id="openVocabularyBtn" class="link-btn" type="button">Vocabulary</button>
         </label>
+        <div class="checkbox-grid">
         <label class="label">
           <input type="checkbox" id="showOriginalTooltip" class="input-checkbox">
           <span id="showOriginalTooltipLabel">Show Original Text Tooltip in Page Translate</span>
@@ -52,7 +55,8 @@
           <input type="checkbox" id="useDiskCache" class="input-checkbox">
           <span id="useDiskCacheLabel">Enable local cached translation</span>
         </label>
-      </div>  
+        </div>
+      </div>
       <div class="section inline-section">
         <div class="column">
           <label id="translationSourceLabel" for="translationSource">Translation Source:</label>
@@ -74,6 +78,13 @@
             <option value="replace">Replace Original</option>
             <option value="bilingual">Bilingual</option>
           </select>
+        </div>
+        <div class="column">
+          <label id="shortcutLabel">Shortcut:</label>
+          <div class="shortcut-row">
+            <kbd id="shortcutDisplay">—</kbd>
+            <button id="openShortcutSettingsBtn" class="btn secondary">Set Shortcuts</button>
+          </div>
         </div>
       </div>
       <div class="section inline-section">
@@ -109,18 +120,11 @@
           </select>
         </div>
       </div>
-      <div class="buttons">
+      <div class="buttons buttons-4">
         <button id="saveBtn" class="btn">Save Settings</button>
         <button id="clearBtn" class="btn secondary">Clear Triggered</button>
-      </div>
-      <div class="buttons">
         <button id="translatePageBtn" class="btn">Translate Page</button>
         <button id="restorePageBtn" class="btn secondary">Restore Page</button>
-      </div>
-      <div class="shortcut-row">
-        <span id="shortcutLabel">Shortcut:</span>
-        <kbd id="shortcutDisplay">—</kbd>
-        <button id="openShortcutSettingsBtn" class="btn secondary">Set Shortcuts</button>
       </div>
     </div>
     

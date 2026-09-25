@@ -38,7 +38,8 @@ const i18nStrings = {
       shortcutLabelID: "Shortcut:",
       manageSitesBtnID: "Manage sites",
       openGlossaryBtnID: "Glossary",
-      enableYouTubeSubtitlesLabelID: "YouTube bilingual subtitles (turn on CC in the video)",
+      enableYouTubeSubtitlesLabelID: "YouTube bilingual subtitles",
+      enableYouTubeSubtitlesHintID: "Turn on CC in the video. Uses the page translation source.",
       openVocabularyBtnID: "Vocabulary",
       navVocabularyID: "Vocabulary",
       vocabularyTitleID: "Vocabulary",
@@ -125,7 +126,8 @@ const i18nStrings = {
       shortcutLabelID: "快捷鍵：",
       manageSitesBtnID: "管理網站清單",
       openGlossaryBtnID: "術語表",
-      enableYouTubeSubtitlesLabelID: "YouTube 雙語字幕（影片要開啟 CC 字幕）",
+      enableYouTubeSubtitlesLabelID: "YouTube 雙語字幕",
+      enableYouTubeSubtitlesHintID: "影片要開啟 CC 字幕，使用整頁翻譯的翻譯來源。",
       openVocabularyBtnID: "生字本",
       navVocabularyID: "生字本",
       vocabularyTitleID: "生字本",
@@ -190,6 +192,9 @@ const i18nStrings = {
     setText("manageSitesBtn", dict.manageSitesBtnID);
     setText("openGlossaryBtn", dict.openGlossaryBtnID);
     setText("enableYouTubeSubtitlesLabel", dict.enableYouTubeSubtitlesLabelID);
+    // 空間不夠寫「要開啟 CC 字幕」，改成滑鼠移上去的提示
+    const youTubeOption = document.getElementById('enableYouTubeSubtitles')?.closest('label');
+    if (youTubeOption) youTubeOption.title = dict.enableYouTubeSubtitlesHintID;
     setText("openVocabularyBtn", dict.openVocabularyBtnID);
     setText("navVocabulary", dict.navVocabularyID);
     setText("vocabularyTitle", dict.vocabularyTitleID);

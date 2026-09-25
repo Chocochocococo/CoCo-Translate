@@ -571,54 +571,155 @@ try {
   });
   await yt.close();
 
-  // 8. popup：AI 設定與模型清單
-  const popup = await context.newPage();
-  popup.on('pageerror', err => errors.push('popup pageerror: ' + err.message));
-  await popup.goto(`chrome-extension://${extId}/popup.html`);
-  await popup.click('#tabAPI');
-  await check('popup：讀出已存的 AI 設定', async () => {
-    assert.equal(await popup.inputValue('#llmProvider'), 'ollama-local');
-    assert.equal(await popup.inputValue('#llmBaseUrl'), llmBaseUrl);
-    assert.equal(await popup.inputValue('#llmModel'), 'mock');
+  // 8. 設定頁：翻譯來源與 AI
+  const settings = await context.newPage();
+  settings.on('pageerror', err => errors.push('options pageerror: ' + err.message));
+  await settings.goto(`chrome-extension://${extId}/options.html#sources`);
+  await settings.waitForTimeout(300);
+  await check('設定頁：讀出已存的 AI 設定', async () => {
+    assert.equal(await settings.inputValue('#llmProvider'), 'ollama-local');
+    assert.equal(await settings.inputValue('#llmBaseUrl'), llmBaseUrl);
+    assert.equal(await settings.inputValue('#llmModel'), 'mock');
   });
-  await popup.click('#fetchLlmModelsBtn');
-  await check('popup：載入模型清單', async () => {
-    await popup.waitForFunction(() => document.querySelectorAll('#llmModelList option').length === 2, null, { timeout: 3000 });
-    const models = await popup.$$eval('#llmModelList option', options => options.map(o => o.value));
+  await settings.click('#fetchLlmModelsBtn');
+  await check('設定頁：載入模型清單', async () => {
+    await settings.waitForFunction(() => document.querySelectorAll('#llmModelList option').length === 2, null, { timeout: 3000 });
+    const models = await settings.$$eval('#llmModelList option', options => options.map(o => o.value));
     assert.deepEqual(models, ['mock-small:free', 'mock-large']);
   });
-  await popup.selectOption('#llmProvider', 'openrouter');
-  await popup.fill('#llmApiKey', 'sk-or-test');
-  await popup.fill('#llmModel', 'google/gemma-4-31b-it:free');
-  await popup.click('#saveLlmBtn');
-  await popup.waitForTimeout(300);
-  await popup.click('#custom-warning-modal button');
-  await check('popup：切換供應商並儲存，其他供應商的設定不會被洗掉', async () => {
+  await settings.selectOption('#llmProvider', 'openrouter');
+  await settings.fill('#llmApiKey', 'sk-or-test');
+  await settings.fill('#llmModel', 'google/gemma-4-31b-it:free');
+  await settings.click('#saveLlmBtn');
+  await settings.waitForTimeout(300);
+  await settings.click('#custom-warning-modal button');
+  await check('設定頁：切換供應商並儲存，其他供應商的設定不會被洗掉', async () => {
     const { llmSettings } = await sw.evaluate(() => chrome.storage.local.get('llmSettings'));
     assert.equal(llmSettings.provider, 'openrouter');
     assert.deepEqual(llmSettings.providers.openrouter, { apiKey: 'sk-or-test', model: 'google/gemma-4-31b-it:free', baseUrl: '' });
     assert.equal(llmSettings.providers['ollama-local'].baseUrl, llmBaseUrl);
   });
-  await popup.selectOption('#llmProvider', 'gemini');
-  await check('popup：Gemini 預設模型與申請說明', async () => {
-    assert.equal(await popup.inputValue('#llmModel'), 'gemini-3.5-flash-lite');
-    assert.match(await popup.textContent('#llmHint'), /aistudio\.google\.com/);
-    const providers = await popup.$$eval('#llmProvider option', os => os.map(o => o.value));
+  await check('設定頁：整頁翻譯用雲端 AI 會提醒額度', async () => {
+    await settings.waitForFunction(() => /額度/.test(document.querySelector('#sourceWarning').textContent), null, { timeout: 3000 });
+  });
+  await settings.selectOption('#llmProvider', 'gemini');
+  await check('設定頁：Gemini 預設模型與申請說明', async () => {
+    assert.equal(await settings.inputValue('#llmModel'), 'gemini-3.5-flash-lite');
+    assert.match(await settings.textContent('#llmHint'), /aistudio\.google\.com/);
+    const providers = await settings.$$eval('#llmProvider option', os => os.map(o => o.value));
     assert.deepEqual(providers, ['ollama-cloud', 'openrouter', 'gemini', 'groq', 'mistral', 'ollama-local', 'custom']);
   });
-  await check('popup：翻譯來源選單有 AI (LLM)', async () => {
-    await popup.click('#tabGeneral');
-    await popup.click('#openApiModalBtn');
-    const options = await popup.$$eval('#pageApiSelect option', os => os.map(o => o.value));
+  await check('設定頁：翻譯來源選單有 AI 翻譯，而且讀得到已存的來源', async () => {
+    const options = await settings.$$eval('#pageSource option', os => os.map(o => o.value));
     assert.ok(options.includes('llm'));
-    assert.equal(await popup.inputValue('#triggerApiSelect'), 'llm');
+    assert.equal(await settings.inputValue('#triggerSource'), 'llm');
+    assert.equal(await settings.inputValue('#pageSource'), 'llm');
   });
-  await check('popup：顯示目前的快捷鍵', async () => {
-    assert.equal(await popup.textContent('#shortcutDisplay'), 'Alt+Shift+Y');
+  await settings.selectOption('#triggerSource', 'bing');
+  await check('設定頁：翻譯來源改了馬上存', async () => {
+    await settings.waitForTimeout(200);
+    const { triggerTranslationSource } = await sw.evaluate(() => chrome.storage.local.get('triggerTranslationSource'));
+    assert.equal(triggerTranslationSource, 'bing');
   });
-  await check('popup：快取大小可以讀到', async () => {
-    await popup.waitForFunction(() => /Cache Size: \d/.test(document.querySelector('#cacheSizeDisplay').textContent), null, { timeout: 3000 });
+  await sw.evaluate(() => chrome.storage.local.set({ triggerTranslationSource: 'llm' }));
+
+  // 9. 設定頁：一般
+  await settings.goto(`chrome-extension://${extId}/options.html#general`);
+  await settings.waitForTimeout(300);
+  await check('設定頁：顯示目前的快捷鍵', async () => {
+    assert.equal(await settings.textContent('#shortcutDisplay'), 'Alt+Shift+Y');
   });
+  await check('設定頁：快取大小可以讀到', async () => {
+    await settings.waitForFunction(() => /快取大小：\d/.test(document.querySelector('#cacheSizeDisplay').textContent), null, { timeout: 3000 });
+  });
+  await settings.click('#triggerKey');
+  await settings.keyboard.press('ShiftRight');
+  await check('設定頁：按一個鍵設定觸發鍵', async () => {
+    await settings.waitForTimeout(200);
+    const { triggerKey } = await sw.evaluate(() => chrome.storage.local.get('triggerKey'));
+    assert.equal(triggerKey, 'ShiftRight');
+    assert.equal(await settings.inputValue('#triggerKey'), 'Right Shift');
+  });
+  await sw.evaluate(() => chrome.storage.local.set({ triggerKey: 'ControlRight' }));
+  await settings.click('#useDiskCache');
+  await check('設定頁：開關改了馬上存', async () => {
+    await settings.waitForTimeout(200);
+    const { useDiskCache } = await sw.evaluate(() => chrome.storage.local.get('useDiskCache'));
+    assert.equal(useDiskCache, true);
+  });
+  await settings.click('#useDiskCache');
+  await settings.click('#themeSegmented button[data-value="dark"]');
+  await check('外觀：設定頁手動切成深色', async () => {
+    assert.equal(await settings.getAttribute('html', 'data-theme'), 'dark');
+    const { uiTheme } = await sw.evaluate(() => chrome.storage.local.get('uiTheme'));
+    assert.equal(uiTheme, 'dark');
+    const background = await settings.evaluate(() => getComputedStyle(document.body).backgroundColor);
+    assert.equal(background, 'rgb(23, 27, 25)');
+  });
+  await settings.selectOption('#languageSelector', 'en');
+  await check('設定頁：切換介面語言', async () => {
+    await settings.waitForFunction(() => document.querySelector('#navGeneral').textContent.includes('General'), null, { timeout: 3000 });
+    assert.match(await settings.textContent('#cacheSizeDisplay'), /^Cache size: /);
+  });
+  await settings.selectOption('#languageSelector', 'zh');
+
+  // 10. popup（AI 換回假伺服器，剛剛存的 OpenRouter 金鑰是假的，翻不了）
+  await sw.evaluate(async () => {
+    const { llmSettings } = await chrome.storage.local.get('llmSettings');
+    await chrome.storage.local.set({ llmSettings: { ...llmSettings, provider: 'ollama-local' } });
+  });
+  const popup = await context.newPage();
+  popup.on('pageerror', err => errors.push('popup pageerror: ' + err.message));
+  await popup.addInitScript(([id, o]) => {
+    const realQuery = chrome.tabs.query.bind(chrome.tabs);
+    chrome.tabs.query = (q, cb) => q.active ? cb([{ id, url: o + '/' }]) : realQuery(q, cb);
+  }, [tabId, origin]);
+  await popup.goto(`chrome-extension://${extId}/popup.html`);
+  await popup.waitForTimeout(400);
+  await check('popup：跟著設定頁的深色外觀', async () => {
+    assert.equal(await popup.getAttribute('html', 'data-theme'), 'dark');
+    assert.equal(await popup.getAttribute('#themeToggle', 'data-mode'), 'dark');
+  });
+  await popup.click('#themeToggle');
+  await check('popup：外觀按鈕 深色 → 自動（跟隨系統）', async () => {
+    assert.equal(await popup.getAttribute('html', 'data-theme'), null);
+    const { uiTheme } = await sw.evaluate(() => chrome.storage.local.get('uiTheme'));
+    assert.equal(uiTheme, 'auto');
+    // 設定頁也同步
+    await settings.waitForFunction(() => !document.documentElement.dataset.theme, null, { timeout: 3000 });
+  });
+  await check('popup：顯示網域、快捷鍵、目前的翻譯來源', async () => {
+    assert.equal(await popup.textContent('#siteHost'), '127.0.0.1');
+    assert.equal(await popup.textContent('#pageShortcut'), 'Alt+Shift+Y');
+    assert.equal(await popup.inputValue('#pageSource'), 'llm');
+    assert.match(await popup.textContent('#triggerHint'), /Right Ctrl/);
+  });
+  await page.bringToFront();
+  await page.evaluate(() => window.scrollTo(0, 0));
+  const translatedBefore = (await page.textContent('#p2')).startsWith('[譯]');
+  await check('popup：大按鈕反映目前分頁的翻譯狀態', async () => {
+    assert.equal(await popup.textContent('#pageToggleLabel'), translatedBefore ? '顯示原文' : '翻譯此頁');
+  });
+  await popup.click('#pageToggleBtn');
+  await check('popup：按大按鈕翻譯 ⇄ 還原目前分頁', async () => {
+    await page.waitForFunction(expected => document.querySelector('#p2').textContent.startsWith('[譯]') === expected,
+      !translatedBefore, { timeout: 5000 });
+    assert.equal(await popup.textContent('#pageToggleLabel'), translatedBefore ? '翻譯此頁' : '顯示原文');
+  });
+  await popup.click('#displayMode button[data-value="bilingual"]');
+  await check('popup：切換顯示方式馬上存', async () => {
+    const { pageDisplayMode } = await sw.evaluate(() => chrome.storage.local.get('pageDisplayMode'));
+    assert.equal(pageDisplayMode, 'bilingual');
+    assert.equal(await popup.getAttribute('#displayMode button[data-value="bilingual"]', 'aria-pressed'), 'true');
+  });
+  await popup.click('#displayMode button[data-value="replace"]');
+  await popup.click('#toggleTranslation');
+  await check('popup：關閉滑鼠觸發翻譯', async () => {
+    await popup.waitForTimeout(200);
+    const { isEnabled } = await sw.evaluate(() => chrome.storage.local.get('isEnabled'));
+    assert.equal(isEnabled, false);
+  });
+  await popup.click('#toggleTranslation');
 
   await check('沒有任何頁面錯誤', async () => {
     assert.deepEqual(errors, []);

@@ -106,6 +106,60 @@ Chrome、Firefox 兩邊同步修改。
 
 ---
 
+## ✅ Phase 2 + 3 完成紀錄（v1.4.0.0）
+
+### 結構
+
+- `CoCo Translate Chrome/`、`Coco Translate Firefox/` 合併成單一 `src/`，用 `manifests/chrome.json`（MV3）、`manifests/firefox.json`（MV2）區分
+- `scripts/build.mjs` 不用裝任何套件就能產出 `dist/chrome`、`dist/firefox` 與上架用的 zip / xpi；版本號只寫在 `package.json`
+- GitHub Actions：push 後自動跑測試並打包，可以直接下載安裝檔
+- 詳細說明見 [DEVELOPMENT.md](DEVELOPMENT.md)
+
+### 翻譯移到背景程式
+
+- content script 只負責收集文字，翻譯請求統一送到背景程式的 `TranslationService`
+- **本地快取只剩一份**，「清除快取」按鈕恢復正常，popup 顯示的快取大小也是正確的
+- 每個翻譯來源一條請求佇列，開再多分頁也不會突破限流
+- 快取 key 帶上翻譯來源與模型，換來源不會拿到舊來源的譯文
+- 純數字、純標點的段落不送出，省額度
+- **所有來源都改成批次翻譯**：Google、Bing、Cloud Translation、DeepL 一個請求翻多段，整頁翻譯的請求數大幅減少
+- Google `translateHtml` 會把輸入當 HTML：現在先跳脫、回來再解碼，`a < b` 不會再變成 `a &lt; b`
+- Bing 中文代碼改成 `zh-Hant`，token 過期會自動換新再試一次
+- DeepL 改用 `ZH-HANT`（DeepL 已支援繁中與韓文，舊的「不支援」提示拿掉了）、金鑰改放 header、`:fx` 結尾的金鑰自動走免費端點
+
+### AI 翻譯（OpenAI 相容）
+
+- 一個 `OpenAICompatibleTranslator` 支援：**Ollama Cloud**（預設 `gemma4:31b`）、**OpenRouter**（預設 `google/gemma-4-31b-it:free`）、Mistral、**本機 Ollama**、自訂端點
+- 每家各自記住 API Key、模型、Base URL，切換供應商不會把其他家的設定洗掉
+- 「載入模型清單」按鈕，OpenRouter 的 `:free` 模型排在最前面
+- 多段文字用 JSON 格式一次送出；模型漏段就把批次切半重試，不會整批錯位
+- 自動清掉模型的思考過程（`<think>`）與 Markdown 圍欄
+- 自訂 prompt 保留，`${fullTargetLang}` 照樣可用
+- 舊版 Mistral 設定會自動搬到新結構
+
+### 網頁端
+
+- 保留文字前後的空白，`Hello <b>world</b>` 翻完不會再黏在一起，還原後也完全一樣
+- 不翻：`<script>`、`<style>`、`<code>`、可編輯區域、`translate="no"`、`.notranslate`、CoCo 自己的介面
+  - **原本整頁翻譯會連 `<style>` 裡的 CSS 一起送去翻，可能把網頁樣式弄壞**
+- 翻譯失敗時右下角跳出提示（金鑰錯誤、額度用完、連線失敗……），同樣的錯誤 10 秒內只提示一次；全部失敗時不會再插一份跟原文一樣的「譯文」
+- 重複整頁翻譯時，textarea 與屬性不會把已翻好的內容當成原文
+
+### 其他
+
+- Regex 匯入兩邊都改走 options 頁
+- Regex 清單與提示視窗改用 DOM API 建立，匯入的 JSON 不會被當成 HTML
+- Firefox manifest 加上 `data_collection_permissions`（附加元件商店的新規定）
+
+### 測試
+
+- `npm test`：20 個單元測試（後處理、限流、各翻譯來源的請求格式、AI 分段與切半重試、錯誤代碼、快取、設定遷移）
+- `tests/e2e/chrome.e2e.mjs`：在 Chromium 載入擴充功能，搭配本機假的 AI 伺服器跑 19 項端對端測試，全部通過
+- Firefox 版用 Mozilla 的 `web-ext lint` 檢查：0 個錯誤。剩下的警告是既有的圖示尺寸（檔案 64px、宣告 48px），以及沿用原本寫法的 `innerHTML`
+- **尚未實測**：Firefox 實機、以及真實的 Google / Bing / DeepL / Ollama Cloud / OpenRouter 服務（測試環境的瀏覽器連不到外網；Google 的批次格式另外用 curl 對真實 API 確認過）
+
+---
+
 ## 2. 新的 AI 翻譯來源
 
 ### 方向：一個通用的「OpenAI 相容」翻譯器，取代各家分開寫
@@ -189,11 +243,11 @@ scripts/build.mjs    產出 dist/chrome/、dist/firefox/ 與 zip/xpi
 
 | 階段 | 內容 | 預估規模 | 版本 |
 |---|---|---|---|
-| **Phase 1：修 Bug** | 1-1～1-3「總是翻譯此網站」、設定不生效（改 `storage.onChanged`）、2-1、2-2、2-6～2-9；Chrome、Firefox 兩個資料夾同步修 | 小，約 1～2 天 | v1.3.3 |
-| **Phase 2：重整結構** | 兩版合併成單一 `src/`、建置腳本、翻譯請求移到 background、統一快取與限流、Translator 抽共用基底 | 中 | v1.4.0 |
-| **Phase 3：新 AI 來源** | `OpenAICompatibleTranslator`、Ollama Cloud / OpenRouter / 本機 Ollama 預設、模型清單、JSON 分段、錯誤提示 UI | 中 | v1.4.0 |
-| **Phase 4：整頁翻譯效能** | 批次化、只翻可見區域、SPA 換頁偵測 | 中 | v1.5.0 |
-| **Phase 5：打磨** | 安全修正（innerHTML）、網站清單管理頁（支援萬用字元 `*.example.com`）、README／Notion 文件更新 | 小 | v1.5.x |
+| ✅ **Phase 1：修 Bug** | 1-1～1-3「總是翻譯此網站」、設定不生效（改 `storage.onChanged`）、2-1、2-2、2-6～2-9；Chrome、Firefox 兩個資料夾同步修 | 小，約 1～2 天 | v1.3.3 |
+| ✅ **Phase 2：重整結構** | 兩版合併成單一 `src/`、建置腳本、翻譯請求移到 background、統一快取與限流、Translator 抽共用基底 | 中 | v1.4.0 |
+| ✅ **Phase 3：新 AI 來源** | `OpenAICompatibleTranslator`、Ollama Cloud / OpenRouter / 本機 Ollama 預設、模型清單、JSON 分段、錯誤提示 UI | 中 | v1.4.0 |
+| **Phase 4：整頁翻譯效能** | ~~批次化~~（Phase 2 已完成）、只翻可見區域、SPA 換頁偵測 | 中 | v1.5.0 |
+| **Phase 5：打磨** | 圖示尺寸、網站清單管理頁（支援萬用字元 `*.example.com`）、README／Notion 文件更新 | 小 | v1.5.x |
 
 建議順序：**先做 Phase 1**（馬上能用、風險低），再把 Phase 2 + 3 一起做，因為新的 AI 來源最好直接建立在 background 架構上，不用寫兩次。
 
@@ -201,10 +255,10 @@ scripts/build.mjs    產出 dist/chrome/、dist/firefox/ 與 zip/xpi
 
 ## 5. 待決定事項
 
-1. Firefox 版要不要一起升到 MV3？（Firefox 128+ 支援，可以共用 manifest 結構）
-2. 整頁翻譯要不要開放使用 LLM？（建議只開放給本機 Ollama／自訂端點，並顯示額度警告）
-3. Mistral 要保留成獨立選項，還是併入「OpenAI 相容」的預設清單？（建議併入）
-4. 現有使用者的 `mistralApiKey` 設定要自動遷移到新結構嗎？（建議要）
+1. ~~Firefox 版要不要一起升到 MV3？~~ → 先維持 MV2（Firefox MV3 的網站權限預設要使用者另外授權，容易變成「裝了不能用」）。程式碼已經兩邊共用，之後要升只需改 manifest
+2. ~~整頁翻譯要不要開放使用 LLM？~~ → 開放，但選雲端 AI 做整頁翻譯時會跳出額度警告
+3. ~~Mistral 要保留成獨立選項？~~ → 併入 AI 翻譯的供應商清單
+4. ~~`mistralApiKey` 要自動遷移嗎？~~ → 會，更新時自動搬過去
 
 ---
 

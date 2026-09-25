@@ -425,6 +425,70 @@ try {
   await sitePopup.close();
   await sw.evaluate(() => chrome.storage.local.set({ siteTranslationList: [] }));
 
+  // 7-4. 選取工具列、單字卡、生字本
+  await page.bringToFront();
+  await page.evaluate(() => {
+    const p = document.createElement('p');
+    p.id = 'vocab-p';
+    p.textContent = 'Books are full of serendipity. Read more.';
+    document.body.prepend(p);
+    window.scrollTo(0, 0);
+  });
+  const wordBox = await page.evaluate(() => {
+    const node = document.querySelector('#vocab-p').firstChild;
+    const start = node.textContent.indexOf('serendipity');
+    const range = document.createRange();
+    range.setStart(node, start);
+    range.setEnd(node, start + 'serendipity'.length);
+    getSelection().removeAllRanges();
+    getSelection().addRange(range);
+    const rect = range.getBoundingClientRect();
+    return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+  });
+  await page.mouse.move(wordBox.x, wordBox.y);
+  await page.evaluate(() => document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true })));
+  await check('選取工具列：翻譯、查字典、朗讀三個按鈕', async () => {
+    await page.waitForSelector('#coco-selection-toolbar', { state: 'visible', timeout: 3000 });
+    const actions = await page.$$eval('#coco-selection-toolbar button', bs => bs.filter(b => b.style.display !== 'none').map(b => b.dataset.action));
+    assert.deepEqual(actions, ['translate', 'lookup', 'speak']);
+  });
+  await page.click('#coco-selection-toolbar button[data-action="speak"]');
+  await page.click('#coco-selection-toolbar button[data-action="lookup"]');
+  await check('單字卡：顯示譯文與例句', async () => {
+    await page.waitForFunction(() => document.querySelector('#coco-word-card .coco-word-translation')?.textContent === '[譯]serendipity', null, { timeout: 3000 });
+    assert.match(await page.textContent('#coco-word-card'), /Books are full of serendipity\./);
+  });
+  await page.click('#coco-word-card .coco-save-word');
+  await check('單字卡：加入生字本', async () => {
+    await page.waitForFunction(() => document.querySelector('#coco-word-card .coco-save-word').disabled, null, { timeout: 3000 });
+    const { vocabulary } = await sw.evaluate(() => chrome.storage.local.get('vocabulary'));
+    assert.equal(vocabulary.length, 1);
+    assert.equal(vocabulary[0].word, 'serendipity');
+    assert.equal(vocabulary[0].translation, '[譯]serendipity');
+    assert.equal(vocabulary[0].context, 'Books are full of serendipity.');
+  });
+  await page.keyboard.press('Escape');
+  await check('單字卡：按 Esc 關閉', async () => {
+    assert.equal(await page.locator('#coco-word-card').count(), 0);
+  });
+  const vocabPage = await context.newPage();
+  vocabPage.on('pageerror', err => errors.push('options pageerror: ' + err.message));
+  await vocabPage.goto(`chrome-extension://${extId}/options.html#vocabulary`);
+  await check('生字本：設定頁列出收藏的字', async () => {
+    await vocabPage.waitForFunction(() => document.querySelectorAll('#vocabularyList li').length === 1, null, { timeout: 3000 });
+    assert.match(await vocabPage.textContent('#vocabularyList li'), /serendipity/);
+  });
+  const [download] = await Promise.all([vocabPage.waitForEvent('download'), vocabPage.click('#exportAnkiBtn')]);
+  await check('生字本：匯出 Anki 格式', async () => {
+    const content = fs.readFileSync(await download.path(), 'utf8');
+    const lines = content.trim().split('\n');
+    assert.equal(lines[0], '#separator:tab');
+    assert.equal(lines[2], '#columns:Word\tTranslation\tPhonetic\tContext\tSource');
+    assert.deepEqual(lines[3].split('\t').slice(0, 4), ['serendipity', '[譯]serendipity', '', 'Books are full of serendipity.']);
+  });
+  await vocabPage.close();
+  await sw.evaluate(() => chrome.storage.local.set({ vocabulary: [] }));
+
   // 8. popup：AI 設定與模型清單
   const popup = await context.newPage();
   popup.on('pageerror', err => errors.push('popup pageerror: ' + err.message));

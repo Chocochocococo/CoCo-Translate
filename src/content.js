@@ -223,6 +223,7 @@ const SKIP_TAGS = new Set(['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE', 'TEXTAREA'
 // CoCo 自己的介面
 const SKIP_SELECTOR = [
   '.immersive-translation-container', '.coco-bilingual', '#custom-context-menu', '#input-box', '#translation-box',
+  '#coco-selection-toolbar', '#coco-word-card',
   '#original-text-tooltip', '#copy-tooltip', '#coco-error-toast'
 ].join(', ');
 
@@ -1021,53 +1022,268 @@ document.addEventListener('keyup', e => {
 });
 
 
-// Selection translation button
+// Selection toolbar：翻譯段落、查單字、朗讀
+let lastSelection = null;   // 放開滑鼠時記下選取內容（點工具列時選取範圍可能已經變了）
+let wordCard = null;
+
+const TOOLBAR_TEXT = {
+  zh: { translate: '翻譯這一段', lookup: '查字典', speak: '朗讀', save: '加入生字本', saved: '已加入 ✓', close: '關閉', loading: '查詢中…', context: '例句' },
+  en: { translate: 'Translate paragraph', lookup: 'Look up', speak: 'Read aloud', save: 'Add to vocabulary', saved: 'Added ✓', close: 'Close', loading: 'Looking up…', context: 'Context' }
+};
+const toolbarText = key => (TOOLBAR_TEXT[uiLanguage] || TOOLBAR_TEXT.en)[key];
+
+// 依文字判斷朗讀要用的語言
+const guessSpeechLang = text => {
+  if (/[぀-ヿ]/.test(text)) return 'ja-JP';
+  if (/[가-힯]/.test(text)) return 'ko-KR';
+  if (/[一-鿿]/.test(text)) return 'zh-TW';
+  if (/[Ѐ-ӿ]/.test(text)) return 'ru-RU';
+  if (/[฀-๿]/.test(text)) return 'th-TH';
+  return 'en-US';
+};
+
+// 用瀏覽器內建的語音合成朗讀（免費、不用 API）
+const speak = text => {
+  if (!text || typeof speechSynthesis === 'undefined') return;
+  speechSynthesis.cancel();
+  const utterance = new SpeechSynthesisUtterance(text.slice(0, 1000));
+  utterance.lang = guessSpeechLang(text);
+  const voices = speechSynthesis.getVoices();
+  utterance.voice = voices.find(v => v.lang === utterance.lang) ||
+    voices.find(v => v.lang.startsWith(utterance.lang.slice(0, 2))) || null;
+  utterance.rate = 0.95;
+  speechSynthesis.speak(utterance);
+};
+
+// 從整段文字裡挑出包含這個字的那一句當例句
+const extractSentence = (paragraph, word) => {
+  const text = paragraph.replace(/\s+/g, ' ').trim();
+  const sentences = text.split(/(?<=[.!?。！？])\s*/);
+  return (sentences.find(sentence => sentence.includes(word)) || text).slice(0, 300);
+};
+
+const getSelectionInfo = () => {
+  const selection = window.getSelection();
+  if (!selection.rangeCount || selection.isCollapsed) return null;
+  const text = selection.toString().trim();
+  if (!text) return null;
+  const range = selection.getRangeAt(0);
+  const element = range.commonAncestorContainer.nodeType === Node.TEXT_NODE
+    ? range.commonAncestorContainer.parentElement
+    : range.commonAncestorContainer;
+  if (!element || element.closest(`${SKIP_SELECTOR}, #coco-selection-toolbar, #coco-word-card`)) return null;
+  const block = getClosestContentContainer(element) || element;
+  return {
+    text,
+    element,
+    rect: range.getBoundingClientRect(),
+    context: extractSentence(block.innerText || block.textContent || '', text)
+  };
+};
+
 const createTranslationButton = () => {
-  if (!selectionTranslationButton) {
-    selectionTranslationButton = document.createElement('button');
-    selectionTranslationButton.innerHTML = `<img src="${chrome.runtime.getURL('icons/translation.png')}" style="width:24px;height:24px;" />`;
-    Object.assign(selectionTranslationButton.style, {
-      position: 'absolute',
-      zIndex: '10000',
+  if (selectionTranslationButton) return;
+  selectionTranslationButton = document.createElement('div');
+  selectionTranslationButton.id = 'coco-selection-toolbar';
+  Object.assign(selectionTranslationButton.style, {
+    position: 'absolute',
+    zIndex: '10000',
+    display: 'none',
+    gap: '2px',
+    padding: '2px',
+    background: 'rgba(255, 255, 255, 0.95)',
+    borderRadius: '8px',
+    boxShadow: '0 2px 8px rgba(0,0,0,0.2)'
+  });
+
+  const makeButton = (content, titleKey, onClick) => {
+    const button = document.createElement('button');
+    button.title = toolbarText(titleKey);
+    button.dataset.action = titleKey;
+    if (typeof content === 'string') button.textContent = content;
+    else button.appendChild(content);
+    Object.assign(button.style, {
+      display: 'inline-flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      width: '30px',
+      height: '30px',
       border: 'none',
       background: 'transparent',
       cursor: 'pointer',
-      display: 'none'
+      fontSize: '17px',
+      padding: '0'
     });
-    selectionTranslationButton.addEventListener('click', async () => {
-      if (!isPageTranslationMode && window.getSelection().rangeCount) {
-        const range = window.getSelection().getRangeAt(0);
-        const selElem = range.commonAncestorContainer.nodeType === 3 ?
-          range.commonAncestorContainer.parentElement :
-          range.commonAncestorContainer;
-        if (selElem) {
-          hideTranslationButton();
-          await handleTranslation(selElem);
-        }
-      }
+    // 按下去時別讓按鈕搶走網頁上的選取
+    button.addEventListener('mousedown', e => e.preventDefault());
+    button.addEventListener('click', e => {
+      e.stopPropagation();
+      button.title = toolbarText(titleKey);
+      onClick();
     });
-    document.body.appendChild(selectionTranslationButton);
-  }
+    selectionTranslationButton.appendChild(button);
+    return button;
+  };
+
+  const icon = document.createElement('img');
+  icon.src = chrome.runtime.getURL('icons/translation.png');
+  Object.assign(icon.style, { width: '24px', height: '24px' });
+  selectionTranslationButton.translateButton = makeButton(icon, 'translate', () => {
+    const element = lastSelection?.element;
+    hideTranslationButton();
+    if (element && !isPageTranslationMode) handleTranslation(element);
+  });
+  makeButton('📖', 'lookup', () => {
+    if (lastSelection) showWordCard(lastSelection);
+  });
+  makeButton('🔊', 'speak', () => speak(lastSelection?.text));
+
+  document.body.appendChild(selectionTranslationButton);
 };
 
-const showTranslationButton = () => {
-  if (!isEnabled || isPageTranslationMode || !enableSelectionButton) return;
-  const sel = window.getSelection();
-  if (sel.rangeCount && !sel.isCollapsed) {
-    createTranslationButton();
-    selectionTranslationButton.style.left = `${cursorPosition.x + 20 + window.scrollX}px`;
-    selectionTranslationButton.style.top = `${cursorPosition.y - 40 + window.scrollY}px`;
-    selectionTranslationButton.style.display = 'block';
-  }
+const showTranslationButton = e => {
+  if (e?.target?.closest?.('#coco-selection-toolbar, #coco-word-card')) return;
+  if (!isEnabled || !enableSelectionButton) return;
+  const info = getSelectionInfo();
+  if (!info) return;
+  lastSelection = info;
+  createTranslationButton();
+  // 整頁翻譯時段落已經翻好了，只留查字典和朗讀
+  selectionTranslationButton.translateButton.style.display = isPageTranslationMode ? 'none' : 'inline-flex';
+  selectionTranslationButton.style.left = `${cursorPosition.x + 20 + window.scrollX}px`;
+  selectionTranslationButton.style.top = `${cursorPosition.y - 40 + window.scrollY}px`;
+  selectionTranslationButton.style.display = 'flex';
 };
 
 const hideTranslationButton = () => {
   if (selectionTranslationButton) selectionTranslationButton.style.display = 'none';
 };
 
+// ---------------- 單字卡 ----------------
+const hideWordCard = () => {
+  wordCard?.remove();
+  wordCard = null;
+};
+
+const addToVocabulary = entry => new Promise(resolve => {
+  chrome.storage.local.get(['vocabulary'], data => {
+    const key = entry.word.toLowerCase();
+    // 同一個字只留一筆，新的例句蓋掉舊的
+    const vocabulary = (data.vocabulary || []).filter(item => item.word.toLowerCase() !== key);
+    vocabulary.unshift(entry);
+    chrome.storage.local.set({ vocabulary }, resolve);
+  });
+});
+
+function showWordCard(info) {
+  hideTranslationButton();
+  hideWordCard();
+  const word = info.text.slice(0, 200);
+
+  wordCard = document.createElement('div');
+  wordCard.id = 'coco-word-card';
+  const width = 320;
+  const left = Math.min(Math.max(8, info.rect.left), window.innerWidth - width - 8);
+  const below = info.rect.bottom + 8;
+  Object.assign(wordCard.style, {
+    position: 'fixed',
+    left: `${left}px`,
+    top: `${below + 220 > window.innerHeight ? Math.max(8, info.rect.top - 228) : below}px`,
+    width: `${width}px`,
+    maxHeight: '320px',
+    overflowY: 'auto',
+    padding: '12px 14px',
+    background: '#fff',
+    color: '#222',
+    font: '14px/1.5 system-ui, sans-serif',
+    textAlign: 'left',
+    borderRadius: '10px',
+    boxShadow: '0 6px 20px rgba(0,0,0,0.25)',
+    zIndex: '10005'
+  });
+
+  const el = (tag, style = {}, text = '') => {
+    const node = document.createElement(tag);
+    Object.assign(node.style, style);
+    if (text) node.textContent = text;
+    return node;
+  };
+
+  const header = el('div', { display: 'flex', alignItems: 'baseline', gap: '8px', flexWrap: 'wrap' });
+  const title = el('strong', { fontSize: '17px' }, word);
+  const phonetic = el('span', { color: '#666' });
+  phonetic.className = 'coco-phonetic';
+  const speakButton = el('button', { border: 'none', background: 'none', cursor: 'pointer', fontSize: '16px', padding: '0' }, '🔊');
+  speakButton.title = toolbarText('speak');
+  speakButton.addEventListener('click', () => speak(word));
+  header.append(title, phonetic, speakButton);
+
+  const translation = el('div', { marginTop: '6px', fontSize: '15px' }, toolbarText('loading'));
+  translation.className = 'coco-word-translation';
+  const definitions = el('ul', { margin: '6px 0 0', paddingLeft: '18px', color: '#444', fontSize: '13px' });
+  const context = el('div', { marginTop: '8px', color: '#666', fontSize: '12px', fontStyle: 'italic' });
+  if (info.context && info.context !== word) context.textContent = `${toolbarText('context')}：${info.context}`;
+
+  const footer = el('div', { display: 'flex', gap: '8px', marginTop: '10px' });
+  const buttonStyle = { padding: '4px 10px', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px' };
+  const saveButton = el('button', { ...buttonStyle, background: '#3498db', color: '#fff' }, toolbarText('save'));
+  saveButton.className = 'coco-save-word';
+  saveButton.disabled = true;
+  const closeButton = el('button', { ...buttonStyle, background: '#e0e0e0', color: '#333' }, toolbarText('close'));
+  closeButton.addEventListener('click', hideWordCard);
+  footer.append(saveButton, closeButton);
+
+  wordCard.append(header, translation, definitions, context, footer);
+  document.body.appendChild(wordCard);
+
+  const card = wordCard;
+  let result = { translation: '', phonetic: '' };
+  chrome.runtime.sendMessage({ type: 'LOOKUP_WORD', word, targetLang: targetLanguage }, response => {
+    if (card !== wordCard) return;   // 已經關掉或換了一張
+    if (chrome.runtime.lastError || !response) {
+      translation.textContent = describeError({ code: 'network', provider: '' });
+      return;
+    }
+    if (response.error) {
+      translation.textContent = `⚠ ${describeError(response.error)}`;
+    } else {
+      translation.textContent = response.translation;
+      result.translation = response.translation;
+      saveButton.disabled = false;
+    }
+    const dictionary = response.dictionary;
+    if (dictionary) {
+      phonetic.textContent = dictionary.phonetic || '';
+      result.phonetic = dictionary.phonetic || '';
+      dictionary.meanings.forEach(meaning => {
+        const item = el('li', {}, `${meaning.partOfSpeech ? `(${meaning.partOfSpeech}) ` : ''}${meaning.definition}`);
+        definitions.appendChild(item);
+      });
+    }
+  });
+
+  saveButton.addEventListener('click', async () => {
+    await addToVocabulary({
+      word,
+      translation: result.translation,
+      phonetic: result.phonetic,
+      context: info.context && info.context !== word ? info.context : '',
+      url: location.href,
+      title: document.title,
+      addedAt: Date.now()
+    });
+    saveButton.textContent = toolbarText('saved');
+    saveButton.disabled = true;
+  });
+}
+
 document.addEventListener('mouseup', showTranslationButton);
 document.addEventListener('mousedown', e => {
   if (selectionTranslationButton && !selectionTranslationButton.contains(e.target)) hideTranslationButton();
+  if (wordCard && !wordCard.contains(e.target)) hideWordCard();
+});
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') hideWordCard();
 });
 
 // Floating button and translation boxes

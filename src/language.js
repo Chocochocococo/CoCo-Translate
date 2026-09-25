@@ -38,6 +38,14 @@ const i18nStrings = {
       shortcutLabelID: "Shortcut:",
       manageSitesBtnID: "Manage sites",
       openGlossaryBtnID: "Glossary",
+      openVocabularyBtnID: "Vocabulary",
+      navVocabularyID: "Vocabulary",
+      vocabularyTitleID: "Vocabulary",
+      vocabularyDescriptionID: "Words saved from the word card (select text → 📖). Export them to study in Anki.",
+      exportAnkiBtnID: "Export for Anki",
+      clearVocabularyBtnID: "Clear All",
+      ankiHintID: "In Anki: File → Import and choose the exported file. Fields: word, translation, phonetic, context, source.",
+      vocabularyEmptyID: "No words yet.",
       navGlossaryID: "Glossary",
       glossaryTitleID: "Glossary",
       glossaryDescriptionID: "Names and terms that should always be translated the same way — character names, places, sects…",
@@ -116,6 +124,14 @@ const i18nStrings = {
       shortcutLabelID: "快捷鍵：",
       manageSitesBtnID: "管理網站清單",
       openGlossaryBtnID: "術語表",
+      openVocabularyBtnID: "生字本",
+      navVocabularyID: "生字本",
+      vocabularyTitleID: "生字本",
+      vocabularyDescriptionID: "從單字卡收藏的生字（選取文字 → 📖）。可以匯出到 Anki 背單字。",
+      exportAnkiBtnID: "匯出成 Anki 格式",
+      clearVocabularyBtnID: "全部刪除",
+      ankiHintID: "在 Anki 選「檔案 → 匯入」，選擇匯出的檔案。欄位：單字、譯文、音標、例句、來源網頁。",
+      vocabularyEmptyID: "還沒有收藏任何單字。",
       navGlossaryID: "術語表",
       glossaryTitleID: "術語表",
       glossaryDescriptionID: "每次都要翻成同一個譯名的人名、地名、門派……",
@@ -171,6 +187,14 @@ const i18nStrings = {
     setText("shortcutLabel", dict.shortcutLabelID);
     setText("manageSitesBtn", dict.manageSitesBtnID);
     setText("openGlossaryBtn", dict.openGlossaryBtnID);
+    setText("openVocabularyBtn", dict.openVocabularyBtnID);
+    setText("navVocabulary", dict.navVocabularyID);
+    setText("vocabularyTitle", dict.vocabularyTitleID);
+    setText("vocabularyDescription", dict.vocabularyDescriptionID);
+    setText("exportAnkiBtn", dict.exportAnkiBtnID);
+    setText("clearVocabularyBtn", dict.clearVocabularyBtnID);
+    setText("ankiHint", dict.ankiHintID);
+    setText("vocabularyEmpty", dict.vocabularyEmptyID);
     setText("navGlossary", dict.navGlossaryID);
     setText("glossaryTitle", dict.glossaryTitleID);
     setText("glossaryDescription", dict.glossaryDescriptionID);

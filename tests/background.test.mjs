@@ -292,3 +292,32 @@ test('PostProcess: 砍掉模型自己加的開場白，但不誤砍譯文', () =
   assert.equal(clean('Here is my home: warm and cozy'), 'Here is my home: warm and cozy');
   assert.equal(clean('他說：\n「你好」'), '他說：\n「你好」');
 });
+
+// ---------------------------------------------------------------- 字典
+test('Dictionary.lookup: 取出音標與前幾個解釋，非英文單字不查', async () => {
+  const { context, fetchCalls } = loadBackground({
+    fetch: async url => url.endsWith('/fox')
+      ? jsonResponse([{
+        word: 'fox',
+        phonetics: [{ audio: '' }, { text: '/fɒks/' }],
+        meanings: [
+          { partOfSpeech: 'noun', definitions: [{ definition: 'A small wild canine.' }] },
+          { partOfSpeech: 'verb', definitions: [{ definition: 'To trick or fool.' }] }
+        ]
+      }])
+      : new Response('{"title":"No Definitions Found"}', { status: 404 })
+  });
+  const result = plain(await context.Dictionary.lookup('Fox'));
+  assert.deepEqual(result, {
+    phonetic: '/fɒks/',
+    meanings: [
+      { partOfSpeech: 'noun', definition: 'A small wild canine.' },
+      { partOfSpeech: 'verb', definition: 'To trick or fool.' }
+    ]
+  });
+  assert.equal(await context.Dictionary.lookup('asdfqwer'), null);
+  assert.equal(await context.Dictionary.lookup('林楓'), null);
+  assert.equal(await context.Dictionary.lookup('two words'), null);
+  await context.Dictionary.lookup('fox');
+  assert.equal(fetchCalls.length, 2, '查過的字要快取，非英文單字不送出');
+});

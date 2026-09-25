@@ -25,6 +25,7 @@
       "markup.js",
       "sitePatterns.js",
       "glossary.js",
+      "dictionary.js",
       "postprocess.js",
       "rateLimiter.js",
       "translator.js",

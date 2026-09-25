@@ -233,6 +233,83 @@ function initGlossary() {
   });
 }
 
+// ---------------- 生字本 ----------------
+// Anki 匯入格式：Tab 分隔，開頭幾行告訴 Anki 怎麼讀（Anki 2.1.54 以後支援）
+function toAnkiText(vocabulary) {
+  const clean = value => String(value || '').replace(/[\t\r\n]+/g, ' ').trim();
+  const lines = vocabulary.map(item =>
+    [item.word, item.translation, item.phonetic, item.context, item.url].map(clean).join('\t'));
+  return ['#separator:tab', '#html:false', '#columns:Word\tTranslation\tPhonetic\tContext\tSource', ...lines].join('\n') + '\n';
+}
+
+function initVocabulary() {
+  const list = document.getElementById('vocabularyList');
+  const empty = document.getElementById('vocabularyEmpty');
+  const count = document.getElementById('vocabularyCount');
+  let current = [];
+
+  const render = vocabulary => {
+    current = vocabulary;
+    list.innerHTML = '';
+    vocabulary.forEach(item => {
+      const head = document.createElement('div');
+      const word = document.createElement('strong');
+      word.textContent = item.word;
+      head.appendChild(word);
+      if (item.phonetic) {
+        const phonetic = document.createElement('span');
+        phonetic.className = 'hint';
+        phonetic.textContent = `  ${item.phonetic}`;
+        head.appendChild(phonetic);
+      }
+      const translation = document.createElement('div');
+      translation.textContent = item.translation || '';
+      const nodes = [head, translation];
+      if (item.context) {
+        const context = document.createElement('div');
+        context.className = 'hint';
+        context.textContent = item.context;
+        nodes.push(context);
+      }
+      if (item.url) {
+        const link = document.createElement('a');
+        link.className = 'hint';
+        link.href = item.url;
+        link.target = '_blank';
+        link.rel = 'noopener';
+        link.textContent = item.title || item.url;
+        nodes.push(link);
+      }
+      list.appendChild(createListItem(nodes, () => {
+        chrome.storage.local.get(['vocabulary'], data => {
+          chrome.storage.local.set({ vocabulary: (data.vocabulary || []).filter(v => v.word !== item.word) });
+        });
+      }));
+    });
+    empty.style.display = vocabulary.length ? 'none' : 'block';
+    count.textContent = vocabulary.length ? t(`共 ${vocabulary.length} 個字`, `${vocabulary.length} words`) : '';
+  };
+
+  document.getElementById('exportAnkiBtn').addEventListener('click', () => {
+    if (!current.length) {
+      showCustomWarning(t('生字本還是空的。', 'Your vocabulary is empty.'));
+      return;
+    }
+    downloadFile('coco-vocabulary.txt', toAnkiText(current), 'text/plain');
+  });
+
+  document.getElementById('clearVocabularyBtn').addEventListener('click', () => {
+    if (!current.length) return;
+    if (!confirm(t(`確定要刪除全部 ${current.length} 個字嗎？`, `Delete all ${current.length} words?`))) return;
+    chrome.storage.local.set({ vocabulary: [] });
+  });
+
+  chrome.storage.local.get(['vocabulary'], data => render(data.vocabulary || []));
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === 'local' && changes.vocabulary) render(changes.vocabulary.newValue || []);
+  });
+}
+
 // ---------------- 匯入正規表達式 ----------------
 function initRegexImport() {
   const importFile = document.getElementById('importFile');
@@ -271,5 +348,6 @@ document.addEventListener('DOMContentLoaded', () => {
   window.addEventListener('hashchange', () => showSection(location.hash.slice(1)));
   initSites();
   initGlossary();
+  initVocabulary();
   initRegexImport();
 });

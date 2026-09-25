@@ -21,12 +21,15 @@ const { chromium } = (() => {
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const EXT_DIR = path.join(ROOT, 'dist', 'chrome');
 
-const PAGE = `<!doctype html><html><head><style>p { color: black; }</style></head><body>
+// <html translate="no">：很多網站這樣寫只是為了擋 Chrome 內建翻譯，CoCo 還是要照翻
+const PAGE = `<!doctype html><html translate="no"><head><style>p { color: black; }</style></head><body>
   <p id="p1">Hello <b>brave</b> world</p>
   <p id="p2">The quick brown fox</p>
   <p id="num">42</p>
   <p id="code">Run <code>npm test</code> now</p>
-  <p id="skip" translate="no">Do not translate</p>
+  <p id="notranslate" class="notranslate">Marked as notranslate</p>
+  <pre><code id="block">Print the greeting</code></pre>
+  <div id="editor" contenteditable="true"><p>Write your story here</p></div>
   <input id="field" placeholder="Search here">
 </body></html>`;
 
@@ -110,11 +113,18 @@ try {
   await check('整頁翻譯：保留行內元素之間的空白', async () => {
     assert.equal(await page.textContent('#p1'), '[譯]Hello [譯]brave [譯]world');
   });
-  await check('整頁翻譯：code、translate="no"、純數字不翻', async () => {
+  await check('整頁翻譯：<html translate="no"> 和 .notranslate 照翻', async () => {
+    assert.equal(await page.textContent('#notranslate'), '[譯]Marked as notranslate');
+  });
+  await check('整頁翻譯：程式碼區塊照翻', async () => {
+    assert.equal(await page.textContent('#code'), '[譯]Run [譯]npm test [譯]now');
+    assert.equal(await page.textContent('#block'), '[譯]Print the greeting');
+  });
+  await check('整頁翻譯：編輯器裡的預設文字照翻', async () => {
+    assert.equal(await page.textContent('#editor'), '[譯]Write your story here');
+  });
+  await check('整頁翻譯：純數字不翻', async () => {
     assert.equal(await page.textContent('#num'), '42');
-    assert.equal(await page.textContent('#skip'), 'Do not translate');
-    assert.equal(await page.textContent('#code code'), 'npm test');
-    assert.equal(await page.textContent('#code'), '[譯]Run npm test [譯]now');
   });
   await check('整頁翻譯：<style> 內容不能被翻', async () => {
     assert.equal(await page.evaluate(() => document.querySelector('style').textContent), 'p { color: black; }');
@@ -138,6 +148,30 @@ try {
     await page.waitForFunction(() => document.querySelector('#dynamic').textContent === '[譯]Loaded later', null, { timeout: 3000 });
   });
 
+  // 2-1. 使用者在編輯器裡打字，不能被自動翻掉
+  await page.click('#editor');
+  await page.keyboard.press('End');
+  await page.keyboard.press('Enter');
+  await page.keyboard.type('My own words');
+  await page.waitForTimeout(1000);
+  await check('編輯器：正在打的字不會被翻掉', async () => {
+    assert.match(await page.textContent('#editor'), /My own words$/);
+    assert.doesNotMatch(await page.textContent('#editor'), /\[譯\]My own words/);
+  });
+  await page.evaluate(() => document.activeElement.blur());
+
+  // 2-2. 晚一點才載入的編輯器（沒在打字），預設文字要翻
+  await page.evaluate(() => {
+    const editor = document.createElement('div');
+    editor.id = 'late-editor';
+    editor.contentEditable = 'true';
+    editor.textContent = 'Share your thoughts';
+    document.body.appendChild(editor);
+  });
+  await check('編輯器：之後才載入的編輯器預設文字也會翻', async () => {
+    await page.waitForFunction(() => document.querySelector('#late-editor').textContent === '[譯]Share your thoughts', null, { timeout: 3000 });
+  });
+
   // 3. 還原
   const tabId = await sw.evaluate(async o => (await chrome.tabs.query({ url: o + '/*' }))[0].id, origin);
   await sw.evaluate(id => chrome.tabs.sendMessage(id, { type: 'RESTORE_PAGE' }), tabId);
@@ -145,8 +179,13 @@ try {
   await check('還原：文字與空白完全回到原樣', async () => {
     const body = await page.evaluate(() => {
       document.querySelector('#dynamic')?.remove();
+      document.querySelector('#late-editor')?.remove();
+      // 使用者自己打的字不算原文
+      const editor = document.querySelector('#editor');
+      [...editor.childNodes].slice(1).forEach(n => n.remove());
       return [...document.body.childNodes]
-        .filter(n => n.nodeType === 3 || /^(P|INPUT)$/.test(n.nodeName))
+        // 只比對網頁原本的內容，CoCo 自己的介面（輸入框翻譯、提示）不算
+        .filter(n => n.nodeType === 3 || (/^(P|PRE|DIV|INPUT)$/.test(n.nodeName) && !/^(translation-box|copy-tooltip|coco-error-toast)$/.test(n.id)))
         .map(n => n.outerHTML ?? n.textContent).join('');
     });
     assert.equal(body.replace(/\s+/g, ' ').trim(), originalHTML.replace(/\s+/g, ' ').trim());

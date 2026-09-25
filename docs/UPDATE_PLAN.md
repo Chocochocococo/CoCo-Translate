@@ -140,8 +140,10 @@ Chrome、Firefox 兩邊同步修改。
 ### 網頁端
 
 - 保留文字前後的空白，`Hello <b>world</b>` 翻完不會再黏在一起，還原後也完全一樣
-- 不翻：`<script>`、`<style>`、`<code>`、可編輯區域、`translate="no"`、`.notranslate`、CoCo 自己的介面
+- 不翻：`<script>`、`<style>`、`<noscript>`、`<template>` 與 CoCo 自己的介面
   - **原本整頁翻譯會連 `<style>` 裡的 CSS 一起送去翻，可能把網頁樣式弄壞**
+  - 程式碼區塊、`translate="no"` / `.notranslate` 照翻（很多網站在整個 `<html>` 加 `translate="no"` 只是為了擋 Chrome 內建翻譯）
+  - 編輯器（contenteditable）裡的預設文字照翻；但游標在編輯器裡時，網頁變動不會觸發翻譯，正在打的字不會被翻掉
 - 翻譯失敗時右下角跳出提示（金鑰錯誤、額度用完、連線失敗……），同樣的錯誤 10 秒內只提示一次；全部失敗時不會再插一份跟原文一樣的「譯文」
 - 重複整頁翻譯時，textarea 與屬性不會把已翻好的內容當成原文
 
@@ -154,7 +156,7 @@ Chrome、Firefox 兩邊同步修改。
 ### 測試
 
 - `npm test`：20 個單元測試（後處理、限流、各翻譯來源的請求格式、AI 分段與切半重試、錯誤代碼、快取、設定遷移）
-- `tests/e2e/chrome.e2e.mjs`：在 Chromium 載入擴充功能，搭配本機假的 AI 伺服器跑 19 項端對端測試，全部通過
+- `tests/e2e/chrome.e2e.mjs`：在 Chromium 載入擴充功能，搭配本機假的 AI 伺服器跑 24 項端對端測試，全部通過
 - Firefox 版用 Mozilla 的 `web-ext lint` 檢查：0 個錯誤。剩下的警告是既有的圖示尺寸（檔案 64px、宣告 48px），以及沿用原本寫法的 `innerHTML`
 - **尚未實測**：Firefox 實機、以及真實的 Google / Bing / DeepL / Ollama Cloud / OpenRouter 服務（測試環境的瀏覽器連不到外網；Google 的批次格式另外用 curl 對真實 API 確認過）
 

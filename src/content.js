@@ -213,18 +213,30 @@ const splitWhitespace = text => {
   return { lead: match[1], core: match[2], trail: match[3] };
 };
 
-// 這些標籤裡的文字不翻（程式碼、樣式、輸入框……）
-const SKIP_TAGS = new Set(['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE', 'TEXTAREA', 'CODE', 'KBD', 'SAMP']);
+// 這些標籤裡的文字不是給人看的，翻了反而會弄壞網頁（textarea 另外用 value 翻）
+// 程式碼區塊、編輯器、translate="no" 都照翻：CoCo 是使用者自己按下去才翻的
+const SKIP_TAGS = new Set(['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE', 'TEXTAREA']);
+// CoCo 自己的介面
 const SKIP_SELECTOR = [
-  '[translate="no"]', '.notranslate',
   '.immersive-translation-container', '#custom-context-menu', '#input-box', '#translation-box',
   '#original-text-tooltip', '#copy-tooltip', '#coco-error-toast'
 ].join(', ');
 
-const shouldSkipTextNode = node => {
+// 使用者正在這個編輯器裡打字嗎？（游標在裡面）
+const isBeingEdited = node => {
+  const active = document.activeElement;
+  return !!active && active.isContentEditable && active.contains(node);
+};
+
+/**
+ * @param {Node} node
+ * @param {boolean} fromMutation 由網頁變動觸發（不是使用者按下整頁翻譯）
+ */
+const shouldSkipTextNode = (node, fromMutation = false) => {
   const parent = node.parentElement;
   if (!parent || SKIP_TAGS.has(parent.tagName)) return true;
-  if (parent.isContentEditable) return true;
+  // 編輯器裡原本的文字照翻；但使用者正在打字時，別把剛打的字翻掉
+  if (fromMutation && parent.isContentEditable && isBeingEdited(node)) return true;
   return !!parent.closest(SKIP_SELECTOR);
 };
 
@@ -273,7 +285,7 @@ function collectAttributeJobs() {
 }
 
 // 收集要整頁翻譯的文字節點，並記下原文
-function collectPageTextJobs(root) {
+function collectPageTextJobs(root, { fromMutation = false } = {}) {
   const jobs = [];
   if (!root) return jobs;
   const nodes = root.nodeType === Node.TEXT_NODE ? [root] : [];
@@ -283,7 +295,7 @@ function collectPageTextJobs(root) {
   }
   for (const node of nodes) {
     const text = node.textContent;
-    if (!text.trim() || shouldSkipTextNode(node)) continue;
+    if (!text.trim() || shouldSkipTextNode(node, fromMutation)) continue;
     // 這是我們自己翻好寫進去的，別再翻一次
     if (translatedTextMap.get(node) === text) continue;
     // 第一次看到、或網頁自己改了內容 → 現在的文字就是原文
@@ -486,7 +498,7 @@ const startAutoTranslationObserver = () => {
   debounceTimer = setTimeout(async () => {
     const nodes = [...pendingNodes];
     pendingNodes = [];
-    const jobs = nodes.filter(node => node.isConnected).flatMap(collectPageTextJobs);
+    const jobs = nodes.filter(node => node.isConnected).flatMap(node => collectPageTextJobs(node, { fromMutation: true }));
     await translateJobs('page', jobs, targetLanguage);
   }, 300);
   });

@@ -46,12 +46,23 @@ const PostProcess = (() => {
       .replace(/“/g, '「');
   };
 
+  // 模型自己加的開場白（沒有預填充之後，有些模型會先講一句再給譯文）
+  // 只砍「獨立一行、冒號結尾」的典型句子，避免誤砍真正的譯文
+  const PREAMBLE_PATTERN = new RegExp(
+    '^\\s*(?:' +
+      "here(?:'s| is| are)[^\\n]*|sure[^\\n]*|certainly[^\\n]*|of course[^\\n]*|" +
+      'the (?:following|translation)[^\\n]*|translation|translated text|' +
+      '以下是[^\\n]*|這是[^\\n]*翻譯[^\\n]*|譯文|翻譯|翻譯結果' +
+    ')[:：]\\s*\\n',
+    'i'
+  );
+
   // LLM 有時候會多吐思考過程、Markdown 圍欄或開場白，全部砍掉
   const cleanLLMOutput = text => text
     .replace(/<think>[\s\S]*?<\/think>/gi, '')
+    .replace(PREAMBLE_PATTERN, '')
     .replace(/^\s*```[a-z]*\s*\n?/i, '')
     .replace(/\n?```\s*$/, '')
-    .replace(/^The following is the translated content:\s*/i, '')
     .trim();
 
   const decodeHtmlEntities = text => text

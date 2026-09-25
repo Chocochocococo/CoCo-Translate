@@ -3,6 +3,9 @@
 const BACKGROUND_LIBS = [
   'translationCache.js',
   'markup.js',
+  'sitePatterns.js',
+  'glossary.js',
+  'dictionary.js',
   'postprocess.js',
   'rateLimiter.js',
   'translator.js',
@@ -115,7 +118,21 @@ const broadcastToTabs = async (message) => {
 
 // 需要非同步回覆的訊息：回傳 promise 的處理函式
 const asyncHandlers = {
-  TRANSLATE_BATCH: message => TranslationService.translate(message),
+  TRANSLATE_BATCH: (message, sender) => TranslationService.translate({ ...message, pageUrl: sender.tab?.url || '' }),
+
+  // 單字卡：譯文（用觸發式翻譯的來源）＋ 英文字典（音標、解釋）
+  LOOKUP_WORD: async (message, sender) => {
+    const [translated, dictionary] = await Promise.all([
+      TranslationService.translate({
+        role: 'trigger',
+        texts: [message.word],
+        targetLang: message.targetLang,
+        pageUrl: sender.tab?.url || ''
+      }),
+      Dictionary.lookup(message.word)
+    ]);
+    return { translation: translated.translations[0], error: translated.error, dictionary };
+  },
 
   LIST_LLM_MODELS: async message => {
     try {
@@ -187,17 +204,40 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 });
 
+// 整頁翻譯 ⇄ 還原（右鍵選單、快捷鍵共用）
+const togglePageTranslation = async (tab) => {
+  if (!tab || tab.id == null) return;
+  const isTranslated = await getPageStatus(tab.id);
+  sendToTab(tab.id, { type: isTranslated ? "RESTORE_PAGE" : "TRANSLATE_PAGE" });
+  await setPageStatus(tab.id, !isTranslated);
+  updateContextMenu(tab.id);
+};
+
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   if (info.menuItemId === "translate-selection" && info.selectionText) {
     sendToTab(tab.id, { type: "TRANSLATE_SELECTION", text: info.selectionText });
   } else if (info.menuItemId === "clear-all-translations") {
     broadcastToTabs({ type: "CLEAR_ALL_TRANSLATIONS" });
   } else if (info.menuItemId === "translate-page") {
-    const isTranslated = await getPageStatus(tab.id);
-    sendToTab(tab.id, { type: isTranslated ? "RESTORE_PAGE" : "TRANSLATE_PAGE" });
-    await setPageStatus(tab.id, !isTranslated);
-    updateContextMenu(tab.id);
+    togglePageTranslation(tab);
   }
+});
+
+// 快捷鍵：用瀏覽器內建的擴充功能快捷鍵，使用者可以在瀏覽器的快捷鍵設定頁自訂或清空停用
+const commandHandlers = {
+  'toggle-page-translation': togglePageTranslation,
+  // 整頁翻譯顯示方式：取代原文 ⇄ 雙語對照（每個分頁的 content script 會自己跟著切換）
+  'toggle-display-mode': async () => {
+    const { pageDisplayMode } = await storageGet(['pageDisplayMode']);
+    await storageSet({ pageDisplayMode: pageDisplayMode === 'bilingual' ? 'replace' : 'bilingual' });
+  }
+};
+
+chrome.commands?.onCommand.addListener(async (command, tab) => {
+  const handler = commandHandlers[command];
+  if (!handler) return;
+  const target = tab || (await queryTabs({ active: true, lastFocusedWindow: true }))[0];
+  handler(target);
 });
 
 chrome.tabs.onActivated.addListener((activeInfo) => {

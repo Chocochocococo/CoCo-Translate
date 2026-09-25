@@ -3,8 +3,15 @@
   "name": "CoCo Translate",
   "description": "Hover Translation",
   "homepage_url": "https://hypnotic-denim-05e.notion.site/CoCo-Translate-175cbce1913780ca8efbf2267976a0a7",
-  "permissions": ["storage", "activeTab", "contextMenus", "tabs"],
-  "host_permissions": ["<all_urls>"],
+  "permissions": [
+    "storage",
+    "activeTab",
+    "contextMenus",
+    "tabs"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
   "web_accessible_resources": [
     {
       "resources": [
@@ -12,20 +19,30 @@
         "icons/loading.gif",
         "popup.css"
       ],
-      "matches": ["<all_urls>"]
+      "matches": [
+        "<all_urls>"
+      ]
     }
   ],
-  "background": { "service_worker": "background.js" },
+  "background": {
+    "service_worker": "background.js"
+  },
   "content_scripts": [
     {
-      "matches": ["<all_urls>"],
+      "matches": [
+        "<all_urls>"
+      ],
       "exclude_matches": [
         "*://challenges.cloudflare.com/*",
         "*://*.hcaptcha.com/*",
         "*://*.recaptcha.net/*",
         "*://www.google.com/recaptcha/*"
       ],
-      "js": ["markup.js", "content.js"],
+      "js": [
+        "markup.js",
+        "sitePatterns.js",
+        "content.js"
+      ],
       "run_at": "document_end",
       "all_frames": false
     }
@@ -35,9 +52,25 @@
     "open_in_tab": true
   },
   "action": {
-    "default_icon": { "48": "icons/icon-48.png" },
+    "default_icon": {
+      "48": "icons/icon-48.png"
+    },
     "default_title": "CoCo Translate",
     "default_popup": "popup.html"
   },
-  "icons": { "48": "icons/icon-48.png" }
+  "icons": {
+    "48": "icons/icon-48.png"
+  },
+  "commands": {
+    "toggle-page-translation": {
+      "suggested_key": {
+        "default": "Alt+Shift+Y",
+        "mac": "MacCtrl+Shift+Y"
+      },
+      "description": "Translate / restore this page"
+    },
+    "toggle-display-mode": {
+      "description": "Switch page translation between replace and bilingual"
+    }
+  }
 }

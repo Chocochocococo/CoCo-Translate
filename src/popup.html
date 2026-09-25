@@ -24,6 +24,9 @@
         <label class="label">
           <input type="checkbox" id="alwaysTranslateCheckbox" class="input-checkbox">
           <span id="alwaysTranslateLabel">Always translate this site</span>
+          <button id="manageSitesBtn" class="link-btn" type="button">Manage sites</button>
+          <button id="openGlossaryBtn" class="link-btn" type="button">Glossary</button>
+          <button id="openVocabularyBtn" class="link-btn" type="button">Vocabulary</button>
         </label>
         <label class="label">
           <input type="checkbox" id="showOriginalTooltip" class="input-checkbox">
@@ -36,6 +39,10 @@
         <label class="label">
           <input type="checkbox" id="enableSelectionButton" class="input-checkbox">
           <span id="enableSelectionButtonLabel">Enable Selection Translation Button</span>
+        </label>
+        <label class="label">
+          <input type="checkbox" id="enableYouTubeSubtitles" class="input-checkbox">
+          <span id="enableYouTubeSubtitlesLabel">YouTube bilingual subtitles</span>
         </label>
         <label class="label">
           <input type="checkbox" id="enableCustomRegex" class="input-checkbox" checked>
@@ -57,6 +64,15 @@
             <option value="1">CoCo Menu</option>
             <option value="2">Both Menu</option>
             <option value="3">Default Menu</option>
+          </select>
+        </div>
+      </div>
+      <div class="section inline-section">
+        <div class="column">
+          <label id="pageDisplayModeLabel" for="pageDisplayMode">Page Translation:</label>
+          <select id="pageDisplayMode" class="input">
+            <option value="replace">Replace Original</option>
+            <option value="bilingual">Bilingual</option>
           </select>
         </div>
       </div>
@@ -100,6 +116,11 @@
       <div class="buttons">
         <button id="translatePageBtn" class="btn">Translate Page</button>
         <button id="restorePageBtn" class="btn secondary">Restore Page</button>
+      </div>
+      <div class="shortcut-row">
+        <span id="shortcutLabel">Shortcut:</span>
+        <kbd id="shortcutDisplay">—</kbd>
+        <button id="openShortcutSettingsBtn" class="btn secondary">Set Shortcuts</button>
       </div>
     </div>
     
@@ -148,6 +169,8 @@
           <select id="llmProvider" class="input">
             <option value="ollama-cloud">Ollama Cloud</option>
             <option value="openrouter">OpenRouter</option>
+            <option value="gemini">Google Gemini</option>
+            <option value="groq">Groq</option>
             <option value="mistral">Mistral</option>
             <option value="ollama-local">Ollama (Local)</option>
             <option value="custom">Custom (OpenAI compatible)</option>
@@ -208,6 +231,7 @@
     </div>
   </div>
   <script src="language.js"></script>
+  <script src="sitePatterns.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

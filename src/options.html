@@ -2,52 +2,91 @@
 <html>
 <head>
   <meta charset="utf-8" />
-  <title>Import Regex Patterns</title>
-  <style>
-    /* 一點簡單的美化 */
-    body {
-      font-family: Arial, sans-serif;
-      margin: 0;
-      padding: 20px;
-      background-color: #f9f9f9;
-      color: #333;
-      line-height: 1.5;
-    }
-    h1 {
-      font-size: 24px;
-      margin-bottom: 10px;
-      color: #2c3e50;
-    }
-    p {
-      margin-bottom: 15px;
-    }
-    .btn {
-      display: inline-block;
-      padding: 10px 20px;
-      font-size: 14px;
-      color: #fff;
-      background-color: #3498db;
-      border: none;
-      border-radius: 4px;
-      cursor: pointer;
-      text-align: center;
-    }
-    .btn:hover {
-      background-color: #2980b9;
-    }
-    #importFile {
-      display: none; /* 隱藏檔案選擇器，用按鈕來觸發 */
-    }
-  </style>
+  <title>CoCo Translate Settings</title>
+  <link rel="stylesheet" href="options.css">
 </head>
 <body>
-  <h1 id="Importrexgexpatternsid">Import Regex Patterns</h1>
-  <p><span id="Importrexgexpatternsdesid">Select your custom Regular Expression JSON file and load it into the extension. Importing will overwrite the existing patterns.</span></p>
+  <nav class="side-nav">
+    <h1>CoCo Translate</h1>
+    <a href="#sites" id="navSites" data-section="sites">Sites</a>
+    <a href="#glossary" id="navGlossary" data-section="glossary">Glossary</a>
+    <a href="#vocabulary" id="navVocabulary" data-section="vocabulary">Vocabulary</a>
+    <a href="#regex" id="navRegex" data-section="regex">Regex</a>
+  </nav>
 
-  <!-- 用檔案選擇器+按鈕的組合 -->
-  <input type="file" id="importFile" accept=".json">
-  <button id="importBtn" class="btn">Import Regex File</button>
+  <main>
+    <!-- 總是翻譯的網站 -->
+    <section id="sites" class="panel">
+      <h2 id="sitesTitle">Always Translate These Sites</h2>
+      <p id="sitesDescription" class="description">
+        Pages on these sites are translated automatically.
+      </p>
+      <ul class="examples">
+        <li><code>example.com</code> <span id="siteExampleHost">this domain only</span></li>
+        <li><code>*.example.com</code> <span id="siteExampleWildcard">example.com and all its subdomains</span></li>
+        <li><code>https://example.com</code> <span id="siteExampleOrigin">this exact origin</span></li>
+      </ul>
+      <div class="row">
+        <input type="text" id="siteInput" class="text-input" placeholder="*.example.com">
+        <button id="addSiteBtn" class="btn">Add</button>
+      </div>
+      <ul id="siteList" class="item-list"></ul>
+      <p id="siteListEmpty" class="empty">No sites yet.</p>
+    </section>
+
+    <!-- 術語表 -->
+    <section id="glossary" class="panel">
+      <h2 id="glossaryTitle">Glossary</h2>
+      <p id="glossaryDescription" class="description">
+        Names and terms that should always be translated the same way.
+      </p>
+      <p id="glossaryHint" class="hint">
+        AI translation gets the glossary in its prompt; Google / Bing / DeepL receive the fixed translation marked as "do not translate".
+      </p>
+      <div class="row">
+        <input type="text" id="glossarySource" class="text-input" placeholder="Lin Feng">
+        <span>→</span>
+        <input type="text" id="glossaryTarget" class="text-input" placeholder="林楓">
+        <input type="text" id="glossarySite" class="text-input" placeholder="*.novel-site.com">
+        <button id="addGlossaryBtn" class="btn">Add</button>
+      </div>
+      <p id="glossarySiteHint" class="hint">Leave the site empty to use the entry everywhere.</p>
+      <ul id="glossaryList" class="item-list"></ul>
+      <p id="glossaryEmpty" class="empty">No entries yet.</p>
+      <div class="row" style="margin-top: 12px">
+        <button id="exportGlossaryBtn" class="btn secondary">Export</button>
+        <button id="importGlossaryBtn" class="btn secondary">Import</button>
+        <input type="file" id="importGlossaryFile" accept=".json" hidden>
+      </div>
+    </section>
+
+    <!-- 生字本 -->
+    <section id="vocabulary" class="panel">
+      <h2 id="vocabularyTitle">Vocabulary</h2>
+      <p id="vocabularyDescription" class="description">
+        Words saved from the word card (select text → 📖). Export them to import into Anki.
+      </p>
+      <div class="row">
+        <button id="exportAnkiBtn" class="btn">Export for Anki</button>
+        <button id="clearVocabularyBtn" class="btn secondary">Clear All</button>
+        <span id="vocabularyCount" class="hint"></span>
+      </div>
+      <p id="ankiHint" class="hint">In Anki: File → Import, choose the exported file. Fields: word, translation, phonetic, context, source.</p>
+      <ul id="vocabularyList" class="item-list"></ul>
+      <p id="vocabularyEmpty" class="empty">No words yet.</p>
+    </section>
+
+    <!-- 匯入正規表達式（Firefox 的 popup 一開檔案對話框就會關掉，所以放這裡） -->
+    <section id="regex" class="panel">
+      <h2 id="Importrexgexpatternsid">Import Regex Patterns</h2>
+      <p class="description"><span id="Importrexgexpatternsdesid">Select your custom Regular Expression JSON file and load it into the extension. Importing will overwrite the existing patterns.</span></p>
+      <input type="file" id="importFile" accept=".json" hidden>
+      <button id="importBtn" class="btn">Import Regex File</button>
+    </section>
+  </main>
+
   <script src="language.js"></script>
+  <script src="sitePatterns.js"></script>
   <script src="options.js"></script>
 </body>
 </html>

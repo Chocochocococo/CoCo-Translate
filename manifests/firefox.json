@@ -23,6 +23,9 @@
     "scripts": [
       "translationCache.js",
       "markup.js",
+      "sitePatterns.js",
+      "glossary.js",
+      "dictionary.js",
       "postprocess.js",
       "rateLimiter.js",
       "translator.js",
@@ -45,6 +48,7 @@
       ],
       "js": [
         "markup.js",
+        "sitePatterns.js",
         "content.js"
       ],
       "run_at": "document_end",
@@ -67,6 +71,18 @@
           "websiteContent"
         ]
       }
+    }
+  },
+  "commands": {
+    "toggle-page-translation": {
+      "suggested_key": {
+        "default": "Alt+Shift+Y",
+        "mac": "MacCtrl+Shift+Y"
+      },
+      "description": "Translate / restore this page"
+    },
+    "toggle-display-mode": {
+      "description": "Switch page translation between replace and bilingual"
     }
   }
 }

@@ -25,6 +25,24 @@ const LLM_PRESETS = {
       'X-Title': 'CoCo Translate'
     }
   },
+  'gemini': {
+    label: 'Google Gemini',
+    baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
+    defaultModel: 'gemini-3.5-flash-lite',
+    needsKey: true,
+    concurrency: 1,
+    rpm: 9,                  // 免費方案每分鐘 10～15 次，Flash-Lite 每天約 500 次
+    jsonMode: false          // 還沒實測過它對 response_format 的支援，先靠 prompt 要求 JSON
+  },
+  'groq': {
+    label: 'Groq',
+    baseUrl: 'https://api.groq.com/openai/v1',
+    defaultModel: 'qwen/qwen3.8-27b',
+    needsKey: true,
+    concurrency: 2,
+    rpm: 20,                 // 免費方案每分鐘 30 次、每天 1,000 次，但每分鐘只有 8,000 token
+    jsonMode: false
+  },
   'mistral': {
     label: 'Mistral',
     baseUrl: 'https://api.mistral.ai/v1',
@@ -159,9 +177,10 @@ class OpenAICompatibleTranslator {
       : '';
   }
 
-  async translateOne(text, targetLang, { html = false } = {}) {
+  async translateOne(text, targetLang, { html = false, glossary = [] } = {}) {
     const fullTargetLang = getLanguageFullName(targetLang);
-    const systemPrompt = `${this.buildBasePrompt(targetLang)}${this.markupInstructions(html)} Only return the translation, nothing else. Do not use any Markdown formatting.`;
+    const systemPrompt = `${this.buildBasePrompt(targetLang)}${this.markupInstructions(html)} Only return the translation, nothing else. Do not use any Markdown formatting.` +
+      Glossary.promptFor(glossary);
     const content = await this.chat([
       { role: 'system', content: systemPrompt },
       { role: 'user', content: `Translate the following into ${fullTargetLang}:\n${text}` }
@@ -169,7 +188,7 @@ class OpenAICompatibleTranslator {
     return PostProcess.cleanLLMOutput(content);
   }
 
-  async translateSegments(texts, targetLang, { html = false } = {}) {
+  async translateSegments(texts, targetLang, { html = false, glossary = [] } = {}) {
     const fullTargetLang = getLanguageFullName(targetLang);
     const systemPrompt =
       `${this.buildBasePrompt(targetLang)}${this.markupInstructions(html)}\n\n` +
@@ -177,7 +196,8 @@ class OpenAICompatibleTranslator {
       `Translate every segment into ${fullTargetLang}. ` +
       `Respond with only a JSON object {"segments": [...]} containing exactly ${texts.length} strings in the same order. ` +
       `Never merge, split, drop or reorder segments. If a segment should not be translated (code, URL, proper noun), copy it unchanged. ` +
-      `Do not use any Markdown formatting.`;
+      `Do not use any Markdown formatting.` +
+      Glossary.promptFor(glossary);
     const content = await this.chat([
       { role: 'system', content: systemPrompt },
       { role: 'user', content: JSON.stringify({ segments: texts }) }
@@ -218,9 +238,11 @@ class OpenAICompatibleTranslator {
     const response = await safeFetch(`${this.baseUrl}/models`, { headers }, this.label);
     if (!response.ok) throw await httpError(response, this.label);
     const data = await response.json();
+    // Gemini 的模型 id 會帶 "models/" 前綴，拿掉才能直接用
     const ids = (data?.data || data?.models || [])
       .map(m => m.id || m.name || m.model)
-      .filter(Boolean);
+      .filter(Boolean)
+      .map(id => id.replace(/^models\//, ''));
     const isFree = id => /:free$/.test(id);
     return [...new Set(ids)].sort((a, b) => (isFree(b) - isFree(a)) || a.localeCompare(b));
   }

@@ -36,6 +36,7 @@ const PAGE = `<!doctype html><html translate="no"><head><style>p { color: black;
 Violets are blue</pre>
   <div id="editor" contenteditable="true"><p>Write your story here</p></div>
   <input id="field" placeholder="Search here">
+  <div id="far" style="margin-top: 5000px"><p id="farp">Far below the fold</p></div>
 </body></html>`;
 
 // ---------- 假的 LLM 伺服器 ----------
@@ -170,12 +171,22 @@ try {
     assert.ok(markupRequests[0].response_format, '應該用 JSON 分段模式');
   });
 
+  // 1-1. 只翻畫面附近的段落
+  await check('只翻畫面附近：很下面的段落一開始不翻', async () => {
+    assert.equal(await page.textContent('#farp'), 'Far below the fold');
+  });
+  await page.evaluate(() => document.querySelector('#farp').scrollIntoView());
+  await check('只翻畫面附近：捲到附近才翻', async () => {
+    await page.waitForFunction(() => document.querySelector('#farp').textContent === '[譯]Far below the fold', null, { timeout: 3000 });
+  });
+  await page.evaluate(() => window.scrollTo(0, 0));
+
   // 2. 動態新增的內容
   await page.evaluate(() => {
     const p = document.createElement('p');
     p.id = 'dynamic';
     p.textContent = 'Loaded later';
-    document.body.appendChild(p);
+    document.body.prepend(p);
   });
   await check('整頁翻譯：之後才載入的內容也會翻', async () => {
     await page.waitForFunction(() => document.querySelector('#dynamic').textContent === '[譯]Loaded later', null, { timeout: 3000 });
@@ -199,7 +210,7 @@ try {
     editor.id = 'late-editor';
     editor.contentEditable = 'true';
     editor.textContent = 'Share your thoughts';
-    document.body.appendChild(editor);
+    document.body.prepend(editor);
   });
   await check('編輯器：之後才載入的編輯器預設文字也會翻', async () => {
     await page.waitForFunction(() => document.querySelector('#late-editor').textContent === '[譯]Share your thoughts', null, { timeout: 3000 });
@@ -226,6 +237,43 @@ try {
         .map(n => n.outerHTML ?? n.textContent).join('');
     });
     assert.equal(body.replace(/\s+/g, ' ').trim(), originalHTML.replace(/\s+/g, ' ').trim());
+  });
+
+  // 3-1. 雙語對照
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await sw.evaluate(() => chrome.storage.local.set({ pageDisplayMode: 'bilingual' }));
+  await sw.evaluate(id => chrome.tabs.sendMessage(id, { type: 'TRANSLATE_PAGE' }), tabId);
+  await page.waitForSelector('#p1 .coco-bilingual', { timeout: 3000 }).catch(() => {});
+  await page.waitForTimeout(300);
+  await check('雙語對照：原文不動，譯文插在下方', async () => {
+    assert.equal(await page.evaluate(() => document.querySelector('#p1').firstChild.textContent), 'Hello ');
+    assert.equal(await page.textContent('#p1 .coco-bilingual'), '[譯]Hello brave world');
+    assert.equal(await page.textContent('#p1 .coco-bilingual b'), 'brave');
+  });
+  await check('雙語對照：譯文照中文語序，樣式跟著走，原文順序不變', async () => {
+    assert.equal(await page.textContent('#order .coco-bilingual'), '他對她說你好。');
+    assert.equal(await page.textContent('#order .coco-bilingual i'), '她');
+    assert.equal(await page.locator('#order .coco-bilingual [id]').count(), 0, '複製的元素不能帶重複的 id');
+    assert.deepEqual(await page.$$eval('#order > [id]', els => els.map(el => el.id)), ['bold', 'italic']);
+  });
+  await check('雙語對照：標籤對不回去就放純文字', async () => {
+    assert.equal(await page.textContent('#broken .coco-bilingual'), '[譯]Click here now');
+    assert.equal(await page.textContent('#link'), 'here');
+  });
+  await check('雙語對照：<br> 分行的每一行各有譯文', async () => {
+    assert.equal(await page.locator('#novel .coco-bilingual').count(), 2);
+  });
+  await sw.evaluate(() => commandHandlers['toggle-display-mode']());
+  await check('雙語對照：用快捷鍵切回取代原文', async () => {
+    await page.waitForFunction(() => document.querySelector('#order').textContent === '他對她說你好。', null, { timeout: 3000 });
+    assert.equal(await page.locator('.coco-bilingual').count(), 0);
+    const { pageDisplayMode } = await sw.evaluate(() => chrome.storage.local.get('pageDisplayMode'));
+    assert.equal(pageDisplayMode, 'replace');
+  });
+  await sw.evaluate(id => chrome.tabs.sendMessage(id, { type: 'RESTORE_PAGE' }), tabId);
+  await page.waitForTimeout(300);
+  await check('雙語對照：還原後回到原文', async () => {
+    assert.equal(await page.textContent('#order'), 'He said hello to her.');
   });
 
   // 4. 觸發式翻譯（滑鼠 + 右 Ctrl）
@@ -288,6 +336,217 @@ try {
     assert.match(llmRequests.at(-1).messages[0].content, /English/);
   });
 
+  // 7-1. 快捷鍵
+  await check('快捷鍵：翻譯整頁 ⇄ 還原', async () => {
+    const toggle = () => sw.evaluate(async id => commandHandlers['toggle-page-translation'](await chrome.tabs.get(id)), tabId);
+    await page.bringToFront();
+    await page.evaluate(() => window.scrollTo(0, 0));   // 只翻畫面附近，先捲回頂端
+    await toggle();
+    await page.waitForFunction(() => document.querySelector('#p2').textContent === '[譯]The quick brown fox', null, { timeout: 3000 });
+    await toggle();
+    await page.waitForFunction(() => document.querySelector('#p2').textContent === 'The quick brown fox', null, { timeout: 3000 });
+  });
+
+  // 7-2. 設定頁：網站清單
+  const options = await context.newPage();
+  options.on('pageerror', err => errors.push('options pageerror: ' + err.message));
+  await options.goto(`chrome-extension://${extId}/options.html#sites`);
+  await options.fill('#siteInput', ' 127.0.0.1/some/page ');
+  await options.click('#addSiteBtn');
+  await check('設定頁：新增網站時自動整理格式', async () => {
+    await options.waitForFunction(() => document.querySelectorAll('#siteList li').length === 1, null, { timeout: 3000 });
+    assert.equal(await options.textContent('#siteList li code'), '127.0.0.1');
+  });
+  const autoPage = await context.newPage();
+  await autoPage.goto(origin);
+  await check('設定頁：網域規則會自動整頁翻譯', async () => {
+    await autoPage.waitForFunction(() => document.querySelector('#p2').textContent === '[譯]The quick brown fox', null, { timeout: 5000 });
+  });
+  await autoPage.close();
+  await options.click('#siteList li button');
+  await check('設定頁：刪除網站', async () => {
+    await options.waitForFunction(() => document.querySelectorAll('#siteList li').length === 0, null, { timeout: 3000 });
+    const { siteTranslationList } = await sw.evaluate(() => chrome.storage.local.get('siteTranslationList'));
+    assert.deepEqual(siteTranslationList, []);
+  });
+  // 7-2-1. 設定頁：術語表
+  await options.goto(`chrome-extension://${extId}/options.html#glossary`);
+  await options.fill('#glossarySource', 'fox');
+  await options.fill('#glossaryTarget', '狐狸');
+  await options.click('#addGlossaryBtn');
+  await check('設定頁：新增術語表詞條', async () => {
+    await options.waitForFunction(() => document.querySelectorAll('#glossaryList li').length === 1, null, { timeout: 3000 });
+    assert.match(await options.textContent('#glossaryList li'), /fox → 狐狸/);
+  });
+  await page.bringToFront();
+  await page.evaluate(() => {
+    const p = document.createElement('p');
+    p.id = 'glossary-p';
+    p.textContent = 'A clever fox appeared';
+    document.body.prepend(p);
+    window.scrollTo(0, 0);
+  });
+  const beforeGlossary = llmRequests.length;
+  await page.hover('#glossary-p');
+  await page.keyboard.press('ControlRight');
+  await check('術語表：翻譯時把用到的詞條交給 AI', async () => {
+    await page.waitForFunction(() => document.querySelector('#glossary-p + .immersive-translation-container'), null, { timeout: 3000 });
+    const request = llmRequests.slice(beforeGlossary).find(r => r.messages[1].content.includes('clever fox'));
+    assert.ok(request, '應該有送出請求');
+    assert.match(request.messages[0].content, /- fox → 狐狸/);
+  });
+  await options.bringToFront();
+  await options.click('#glossaryList li button');
+  await check('設定頁：刪除術語表詞條', async () => {
+    await options.waitForFunction(() => document.querySelectorAll('#glossaryList li').length === 0, null, { timeout: 3000 });
+  });
+  await options.close();
+
+  // 7-3. popup 勾選框認得萬用字元規則
+  await sw.evaluate(() => chrome.storage.local.set({ siteTranslationList: ['*.0.0.1'] }));
+  const sitePopup = await context.newPage();
+  await sitePopup.addInitScript(([id, o]) => {
+    const realQuery = chrome.tabs.query.bind(chrome.tabs);
+    chrome.tabs.query = (q, cb) => q.active ? cb([{ id, url: o + '/' }]) : realQuery(q, cb);
+  }, [tabId, origin]);
+  await sitePopup.goto(`chrome-extension://${extId}/popup.html`);
+  await sitePopup.waitForTimeout(400);
+  await check('popup：萬用字元規則套用的網站會打勾', async () => {
+    assert.equal(await sitePopup.isChecked('#alwaysTranslateCheckbox'), true);
+  });
+  await sitePopup.click('#alwaysTranslateCheckbox');
+  await sitePopup.waitForTimeout(300);
+  await check('popup：取消勾選萬用字元規則時，提示到設定頁修改', async () => {
+    assert.match(await sitePopup.textContent('#custom-warning-modal p'), /\*\.0\.0\.1/);
+    assert.equal(await sitePopup.isChecked('#alwaysTranslateCheckbox'), true);
+    const { siteTranslationList } = await sw.evaluate(() => chrome.storage.local.get('siteTranslationList'));
+    assert.deepEqual(siteTranslationList, ['*.0.0.1']);
+  });
+  await sitePopup.close();
+  await sw.evaluate(() => chrome.storage.local.set({ siteTranslationList: [] }));
+
+  // 7-4. 選取工具列、單字卡、生字本
+  await page.bringToFront();
+  await page.evaluate(() => {
+    const p = document.createElement('p');
+    p.id = 'vocab-p';
+    p.textContent = 'Books are full of serendipity. Read more.';
+    document.body.prepend(p);
+    window.scrollTo(0, 0);
+  });
+  const wordBox = await page.evaluate(() => {
+    const node = document.querySelector('#vocab-p').firstChild;
+    const start = node.textContent.indexOf('serendipity');
+    const range = document.createRange();
+    range.setStart(node, start);
+    range.setEnd(node, start + 'serendipity'.length);
+    getSelection().removeAllRanges();
+    getSelection().addRange(range);
+    const rect = range.getBoundingClientRect();
+    return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+  });
+  await page.mouse.move(wordBox.x, wordBox.y);
+  await page.evaluate(() => document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true })));
+  await check('選取工具列：翻譯、查字典、朗讀三個按鈕', async () => {
+    await page.waitForSelector('#coco-selection-toolbar', { state: 'visible', timeout: 3000 });
+    const actions = await page.$$eval('#coco-selection-toolbar button', bs => bs.filter(b => b.style.display !== 'none').map(b => b.dataset.action));
+    assert.deepEqual(actions, ['translate', 'lookup', 'speak']);
+  });
+  await page.click('#coco-selection-toolbar button[data-action="speak"]');
+  await page.click('#coco-selection-toolbar button[data-action="lookup"]');
+  await check('單字卡：顯示譯文與例句', async () => {
+    await page.waitForFunction(() => document.querySelector('#coco-word-card .coco-word-translation')?.textContent === '[譯]serendipity', null, { timeout: 3000 });
+    assert.match(await page.textContent('#coco-word-card'), /Books are full of serendipity\./);
+  });
+  await page.click('#coco-word-card .coco-save-word');
+  await check('單字卡：加入生字本', async () => {
+    await page.waitForFunction(() => document.querySelector('#coco-word-card .coco-save-word').disabled, null, { timeout: 3000 });
+    const { vocabulary } = await sw.evaluate(() => chrome.storage.local.get('vocabulary'));
+    assert.equal(vocabulary.length, 1);
+    assert.equal(vocabulary[0].word, 'serendipity');
+    assert.equal(vocabulary[0].translation, '[譯]serendipity');
+    assert.equal(vocabulary[0].context, 'Books are full of serendipity.');
+  });
+  await page.keyboard.press('Escape');
+  await check('單字卡：按 Esc 關閉', async () => {
+    assert.equal(await page.locator('#coco-word-card').count(), 0);
+  });
+  const vocabPage = await context.newPage();
+  vocabPage.on('pageerror', err => errors.push('options pageerror: ' + err.message));
+  await vocabPage.goto(`chrome-extension://${extId}/options.html#vocabulary`);
+  await check('生字本：設定頁列出收藏的字', async () => {
+    await vocabPage.waitForFunction(() => document.querySelectorAll('#vocabularyList li').length === 1, null, { timeout: 3000 });
+    assert.match(await vocabPage.textContent('#vocabularyList li'), /serendipity/);
+  });
+  const [download] = await Promise.all([vocabPage.waitForEvent('download'), vocabPage.click('#exportAnkiBtn')]);
+  await check('生字本：匯出 Anki 格式', async () => {
+    const content = fs.readFileSync(await download.path(), 'utf8');
+    const lines = content.trim().split('\n');
+    assert.equal(lines[0], '#separator:tab');
+    assert.equal(lines[2], '#columns:Word\tTranslation\tPhonetic\tContext\tSource');
+    assert.deepEqual(lines[3].split('\t').slice(0, 4), ['serendipity', '[譯]serendipity', '', 'Books are full of serendipity.']);
+  });
+  await vocabPage.close();
+  await sw.evaluate(() => chrome.storage.local.set({ vocabulary: [] }));
+
+  // 7-5. YouTube 雙語字幕（假的 YouTube 播放器，結構跟真的一樣）
+  await context.route('https://www.youtube.com/**', route => route.fulfill({
+    status: 200,
+    contentType: 'text/html',
+    body: `<!doctype html><html><body>
+      <div id="movie_player" class="html5-video-player" style="position:relative;width:640px;height:360px;background:#000">
+        <div class="ytp-caption-window-container">
+          <div class="caption-window ytp-caption-window-bottom" style="position:absolute;bottom:20px;left:50%;transform:translateX(-50%)">
+            <span class="captions-text"></span>
+          </div>
+        </div>
+      </div></body></html>`
+  }));
+  const yt = await context.newPage();
+  yt.on('pageerror', err => errors.push('youtube pageerror: ' + err.message));
+  await yt.goto('https://www.youtube.com/watch?v=test');
+  const setCaptions = lines => yt.evaluate(lines => {
+    document.querySelector('.captions-text').innerHTML = lines
+      .map(line => `<span class="caption-visual-line"><span class="ytp-caption-segment" style="font-size:20px">${line}</span></span>`)
+      .join('');
+  }, lines);
+  await yt.waitForTimeout(500);
+  await setCaptions(['Hello everyone']);
+  await yt.waitForTimeout(1000);
+  await check('YouTube 字幕：預設關閉', async () => {
+    assert.equal(await yt.locator('#coco-yt-subtitle').count(), 0);
+  });
+  await sw.evaluate(() => chrome.storage.local.set({ enableYouTubeSubtitles: true }));
+  await check('YouTube 字幕：開啟後在原字幕上方顯示譯文', async () => {
+    await yt.waitForFunction(() => document.querySelector('#coco-yt-subtitle')?.textContent === '[譯]Hello everyone', null, { timeout: 3000 });
+    assert.equal(await yt.evaluate(() => getComputedStyle(document.querySelector('#coco-yt-subtitle')).fontSize), '20px');
+    const [overlayBottom, captionTop] = await yt.evaluate(() => [
+      document.querySelector('#coco-yt-subtitle').getBoundingClientRect().bottom,
+      document.querySelector('.caption-window').getBoundingClientRect().top
+    ]);
+    assert.ok(overlayBottom <= captionTop, '譯文要在原字幕上方');
+  });
+  const beforeRolling = llmRequests.length;
+  for (const partial of ['Today we', 'Today we will', 'Today we will learn', 'Today we will learn about', 'Today we will learn about foxes']) {
+    await setCaptions(['Hello everyone', partial]);
+    await yt.waitForTimeout(120);
+  }
+  await check('YouTube 字幕：逐字滾動時節流，而且翻過的行吃快取', async () => {
+    await yt.waitForFunction(() => document.querySelector('#coco-yt-subtitle')?.textContent === '[譯]Hello everyone\n[譯]Today we will learn about foxes', null, { timeout: 3000 });
+    const rollingRequests = llmRequests.slice(beforeRolling);
+    assert.ok(rollingRequests.length <= 3, `滾動 5 次只該送出少數幾次請求，實際 ${rollingRequests.length} 次`);
+    assert.ok(rollingRequests.every(r => !r.messages[1].content.includes('Hello everyone')), '第一行已經翻過，不該再送');
+  });
+  await setCaptions([]);
+  await check('YouTube 字幕：字幕消失時譯文也隱藏', async () => {
+    await yt.waitForFunction(() => document.querySelector('#coco-yt-subtitle')?.style.display === 'none', null, { timeout: 3000 });
+  });
+  await sw.evaluate(() => chrome.storage.local.set({ enableYouTubeSubtitles: false }));
+  await check('YouTube 字幕：關閉後移除', async () => {
+    await yt.waitForFunction(() => !document.querySelector('#coco-yt-subtitle'), null, { timeout: 3000 });
+  });
+  await yt.close();
+
   // 8. popup：AI 設定與模型清單
   const popup = await context.newPage();
   popup.on('pageerror', err => errors.push('popup pageerror: ' + err.message));
@@ -316,12 +575,22 @@ try {
     assert.deepEqual(llmSettings.providers.openrouter, { apiKey: 'sk-or-test', model: 'google/gemma-4-31b-it:free', baseUrl: '' });
     assert.equal(llmSettings.providers['ollama-local'].baseUrl, llmBaseUrl);
   });
+  await popup.selectOption('#llmProvider', 'gemini');
+  await check('popup：Gemini 預設模型與申請說明', async () => {
+    assert.equal(await popup.inputValue('#llmModel'), 'gemini-3.5-flash-lite');
+    assert.match(await popup.textContent('#llmHint'), /aistudio\.google\.com/);
+    const providers = await popup.$$eval('#llmProvider option', os => os.map(o => o.value));
+    assert.deepEqual(providers, ['ollama-cloud', 'openrouter', 'gemini', 'groq', 'mistral', 'ollama-local', 'custom']);
+  });
   await check('popup：翻譯來源選單有 AI (LLM)', async () => {
     await popup.click('#tabGeneral');
     await popup.click('#openApiModalBtn');
     const options = await popup.$$eval('#pageApiSelect option', os => os.map(o => o.value));
     assert.ok(options.includes('llm'));
     assert.equal(await popup.inputValue('#triggerApiSelect'), 'llm');
+  });
+  await check('popup：顯示目前的快捷鍵', async () => {
+    assert.equal(await popup.textContent('#shortcutDisplay'), 'Alt+Shift+Y');
   });
   await check('popup：快取大小可以讀到', async () => {
     await popup.waitForFunction(() => /Cache Size: \d/.test(document.querySelector('#cacheSizeDisplay').textContent), null, { timeout: 3000 });

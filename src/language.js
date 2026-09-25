@@ -35,6 +35,40 @@ const i18nStrings = {
       deepLAccountTypelabelID: "DeepL Account Type:",
       useDiskCacheLabelID: "Enable local cached translation",
       clearCacheBtnID: "Clear Cache",
+      shortcutLabelID: "Shortcut:",
+      manageSitesBtnID: "Manage sites",
+      openGlossaryBtnID: "Glossary",
+      enableYouTubeSubtitlesLabelID: "YouTube bilingual subtitles (turn on CC in the video)",
+      openVocabularyBtnID: "Vocabulary",
+      navVocabularyID: "Vocabulary",
+      vocabularyTitleID: "Vocabulary",
+      vocabularyDescriptionID: "Words saved from the word card (select text → 📖). Export them to study in Anki.",
+      exportAnkiBtnID: "Export for Anki",
+      clearVocabularyBtnID: "Clear All",
+      ankiHintID: "In Anki: File → Import and choose the exported file. Fields: word, translation, phonetic, context, source.",
+      vocabularyEmptyID: "No words yet.",
+      navGlossaryID: "Glossary",
+      glossaryTitleID: "Glossary",
+      glossaryDescriptionID: "Names and terms that should always be translated the same way — character names, places, sects…",
+      glossaryHintID: "AI translation gets the glossary in its prompt; Google / Bing / DeepL receive the fixed translation marked as \"do not translate\".",
+      glossarySiteHintID: "Leave the site empty to use the entry everywhere, or enter a site rule such as *.novel-site.com.",
+      addGlossaryBtnID: "Add",
+      glossaryEmptyID: "No entries yet.",
+      exportGlossaryBtnID: "Export",
+      importGlossaryBtnID: "Import",
+      navSitesID: "Sites",
+      navRegexID: "Regex",
+      sitesTitleID: "Always Translate These Sites",
+      sitesDescriptionID: "Pages on these sites are translated automatically when they open.",
+      siteExampleHostID: "this domain only (http and https)",
+      siteExampleWildcardID: "example.com and all its subdomains",
+      siteExampleOriginID: "this exact origin",
+      addSiteBtnID: "Add",
+      siteListEmptyID: "No sites yet.",
+      pageDisplayModeLabelID: "Page Translation:",
+      displayReplace: "Replace Original",
+      displayBilingual: "Bilingual",
+      openShortcutSettingsBtnID: "Set Shortcuts",
       Importrexgexpatterns: "Import Regex Patterns",
       Importrexgexpatternsdes: "Select your custom Regular Expression JSON file and load it into the extension. Importing will overwrite the existing patterns.",
       importBtnid: "Import Regex File",
@@ -88,6 +122,40 @@ const i18nStrings = {
       deepLAccountTypelabelID: "DeepL帳戶類型：",
       useDiskCacheLabelID: "啟用本地快取譯文",
       clearCacheBtnID: "清除快取",
+      shortcutLabelID: "快捷鍵：",
+      manageSitesBtnID: "管理網站清單",
+      openGlossaryBtnID: "術語表",
+      enableYouTubeSubtitlesLabelID: "YouTube 雙語字幕（影片要開啟 CC 字幕）",
+      openVocabularyBtnID: "生字本",
+      navVocabularyID: "生字本",
+      vocabularyTitleID: "生字本",
+      vocabularyDescriptionID: "從單字卡收藏的生字（選取文字 → 📖）。可以匯出到 Anki 背單字。",
+      exportAnkiBtnID: "匯出成 Anki 格式",
+      clearVocabularyBtnID: "全部刪除",
+      ankiHintID: "在 Anki 選「檔案 → 匯入」，選擇匯出的檔案。欄位：單字、譯文、音標、例句、來源網頁。",
+      vocabularyEmptyID: "還沒有收藏任何單字。",
+      navGlossaryID: "術語表",
+      glossaryTitleID: "術語表",
+      glossaryDescriptionID: "每次都要翻成同一個譯名的人名、地名、門派……",
+      glossaryHintID: "AI 翻譯會把術語表寫進提示；Google / Bing / DeepL 會先把原文換成譯名，並標成不翻譯。",
+      glossarySiteHintID: "網站留空＝所有網站都套用，也可以填網站規則，例如 *.novel-site.com。",
+      addGlossaryBtnID: "新增",
+      glossaryEmptyID: "還沒有任何詞條。",
+      exportGlossaryBtnID: "匯出",
+      importGlossaryBtnID: "匯入",
+      navSitesID: "網站清單",
+      navRegexID: "正規表達式",
+      sitesTitleID: "總是翻譯的網站",
+      sitesDescriptionID: "打開這些網站的網頁時，會自動整頁翻譯。",
+      siteExampleHostID: "只有這個網域（http、https 都算）",
+      siteExampleWildcardID: "example.com 和它所有的子網域",
+      siteExampleOriginID: "只有這個完整的來源",
+      addSiteBtnID: "新增",
+      siteListEmptyID: "還沒有加入任何網站。",
+      pageDisplayModeLabelID: "整頁翻譯顯示：",
+      displayReplace: "取代原文",
+      displayBilingual: "雙語對照",
+      openShortcutSettingsBtnID: "設定快捷鍵",
       Importrexgexpatterns: "匯入正規表達式",
       Importrexgexpatternsdes: "選擇你的自訂正規表達式 JSON 檔案，並加載到擴充功能中。匯入後會覆蓋現有的正規表達式。",
       importBtnid: "匯入檔案",
@@ -118,6 +186,42 @@ const i18nStrings = {
     setText("openApiModalBtn", dict.openApiModalBtnID);
     setText("useDiskCacheLabel", dict.useDiskCacheLabelID);
     setText("clearCacheBtn", dict.clearCacheBtnID);
+    setText("shortcutLabel", dict.shortcutLabelID);
+    setText("manageSitesBtn", dict.manageSitesBtnID);
+    setText("openGlossaryBtn", dict.openGlossaryBtnID);
+    setText("enableYouTubeSubtitlesLabel", dict.enableYouTubeSubtitlesLabelID);
+    setText("openVocabularyBtn", dict.openVocabularyBtnID);
+    setText("navVocabulary", dict.navVocabularyID);
+    setText("vocabularyTitle", dict.vocabularyTitleID);
+    setText("vocabularyDescription", dict.vocabularyDescriptionID);
+    setText("exportAnkiBtn", dict.exportAnkiBtnID);
+    setText("clearVocabularyBtn", dict.clearVocabularyBtnID);
+    setText("ankiHint", dict.ankiHintID);
+    setText("vocabularyEmpty", dict.vocabularyEmptyID);
+    setText("navGlossary", dict.navGlossaryID);
+    setText("glossaryTitle", dict.glossaryTitleID);
+    setText("glossaryDescription", dict.glossaryDescriptionID);
+    setText("glossaryHint", dict.glossaryHintID);
+    setText("glossarySiteHint", dict.glossarySiteHintID);
+    setText("addGlossaryBtn", dict.addGlossaryBtnID);
+    setText("glossaryEmpty", dict.glossaryEmptyID);
+    setText("exportGlossaryBtn", dict.exportGlossaryBtnID);
+    setText("importGlossaryBtn", dict.importGlossaryBtnID);
+    setText("navSites", dict.navSitesID);
+    setText("navRegex", dict.navRegexID);
+    setText("sitesTitle", dict.sitesTitleID);
+    setText("sitesDescription", dict.sitesDescriptionID);
+    setText("siteExampleHost", dict.siteExampleHostID);
+    setText("siteExampleWildcard", dict.siteExampleWildcardID);
+    setText("siteExampleOrigin", dict.siteExampleOriginID);
+    setText("addSiteBtn", dict.addSiteBtnID);
+    setText("siteListEmpty", dict.siteListEmptyID);
+    setText("pageDisplayModeLabel", dict.pageDisplayModeLabelID);
+    const optReplace = document.querySelector('#pageDisplayMode option[value="replace"]');
+    const optBilingual = document.querySelector('#pageDisplayMode option[value="bilingual"]');
+    if (optReplace) optReplace.textContent = dict.displayReplace;
+    if (optBilingual) optBilingual.textContent = dict.displayBilingual;
+    setText("openShortcutSettingsBtn", dict.openShortcutSettingsBtnID);
 
     // Options 頁（匯入正規表達式）
     setText("Importrexgexpatternsid", dict.Importrexgexpatterns);

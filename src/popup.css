@@ -313,3 +313,32 @@ body {
   margin: 0;
   line-height: 1.4;
 }
+
+/* 快捷鍵那一列 - 幹，小小一行就夠了 */
+.shortcut-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  font-size: 13px;
+}
+
+.shortcut-row kbd {
+  padding: 2px 6px;
+  border: 1px solid #ccc; /* 他媽的，看起來要像鍵盤按鍵 */
+  border-radius: 4px;
+  background: #fff;
+  font-family: inherit;
+}
+
+/* 「管理網站清單」看起來像連結 - 靠北，別搶了勾選框的風頭 */
+.link-btn {
+  margin-left: 6px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: #3498db;
+  font-size: 12px;
+  cursor: pointer;
+  text-decoration: underline;
+}

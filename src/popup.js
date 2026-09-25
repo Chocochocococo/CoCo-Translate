@@ -66,7 +66,7 @@ function loadLLMSettings(callback) {
   });
 }
 
-const LLM_PROVIDERS_NEED_KEY = ['ollama-cloud', 'openrouter', 'mistral'];
+const LLM_PROVIDERS_NEED_KEY = ['ollama-cloud', 'openrouter', 'gemini', 'groq', 'mistral'];
 
 // 檢查選擇的翻譯來源是否已儲存對應的 API key，回傳警告訊息（沒問題就回傳空字串）
 function checkAPIKey(selectedSource, isPage) {
@@ -340,6 +340,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   });
 
+  // YouTube 雙語字幕（預設關閉，改了馬上生效）
+  const youTubeSubtitlesCheckbox = document.getElementById('enableYouTubeSubtitles');
+  chrome.storage.local.get(['enableYouTubeSubtitles'], data => {
+    youTubeSubtitlesCheckbox.checked = data.enableYouTubeSubtitles === true;
+  });
+  youTubeSubtitlesCheckbox.addEventListener('change', () => {
+    chrome.storage.local.set({ enableYouTubeSubtitles: youTubeSubtitlesCheckbox.checked });
+  });
+
   enableSelectionButtonCheckbox.addEventListener('change', (e) => {
     const enableSelectionButton = e.target.checked;
     chrome.storage.local.set({ enableSelectionButton: enableSelectionButton });
@@ -508,13 +517,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     } catch (e) {
       // 拿不到網址就算了
     }
+    const zh = () => (document.getElementById('languageSelector')?.value || 'zh') === 'zh';
     // chrome:// 、about: 這類頁面跑不了 content script，勾了也沒用
     if (!currentUrl || !/^https?:/.test(currentUrl)) {
       checkbox.disabled = true;
       return;
     }
+    // 萬用字元規則（*.example.com）也算：設定頁加的規則，這裡一樣會打勾
     chrome.storage.local.get(["siteTranslationList"], data => {
-      checkbox.checked = (data.siteTranslationList || []).includes(currentUrl);
+      checkbox.checked = !!SitePatterns.findMatch(data.siteTranslationList, tab.url);
     });
     checkbox.addEventListener('change', () => {
       const shouldTranslate = checkbox.checked;
@@ -523,9 +534,20 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (shouldTranslate) {
           if (!siteList.includes(currentUrl)) siteList.push(currentUrl);
         } else {
-          siteList = siteList.filter(site => site !== currentUrl);
+          const exact = SitePatterns.exactEntriesFor(siteList, tab.url);
+          siteList = siteList.filter(site => !exact.includes(site));
+          // 還有萬用字元規則套用在這個網站 → 這裡拿不掉，請使用者到設定頁管理
+          const stillMatched = SitePatterns.findMatch(siteList, tab.url);
+          if (stillMatched) {
+            checkbox.checked = true;
+            showCustomWarning(zh()
+              ? `這個網站是由規則「${stillMatched}」套用的，請到設定頁的網站清單修改。`
+              : `This site is covered by the rule "${stillMatched}". Edit it in the site list on the settings page.`);
+            if (!exact.length) return;
+          }
         }
         chrome.storage.local.set({ siteTranslationList: siteList }, () => {
+          if (!shouldTranslate && SitePatterns.findMatch(siteList, tab.url)) return;
           // 勾選當下就直接翻譯、取消勾選就還原，不用再重新整理頁面
           const type = shouldTranslate ? 'TRANSLATE_PAGE' : 'RESTORE_PAGE';
           chrome.tabs.sendMessage(tab.id, { type }, () => void chrome.runtime.lastError);
@@ -550,7 +572,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
   
   document.getElementById('importRegex').addEventListener('click', () => {
-    chrome.runtime.openOptionsPage();
+    chrome.tabs.create({ url: chrome.runtime.getURL('options.html#regex') });
   });
 
   chrome.storage.local.get(['enableFloatingButton'], data => {
@@ -674,6 +696,22 @@ document.addEventListener('DOMContentLoaded', async () => {
       hint: {
         zh: '到 openrouter.ai/keys 建立金鑰。模型名稱結尾是 :free 的就免費（每分鐘 20 次、每天 50 次）。',
         en: 'Create a key at openrouter.ai/keys. Models ending in :free cost nothing (20 requests/min, 50/day).'
+      }
+    },
+    'gemini': {
+      baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
+      model: 'gemini-3.5-flash-lite',
+      hint: {
+        zh: '到 aistudio.google.com 建立 API Key。Flash-Lite 系列免費，每天約 500 次、每分鐘約 10 次。',
+        en: 'Create a key at aistudio.google.com. Flash-Lite models are free: about 500 requests/day, ~10/min.'
+      }
+    },
+    'groq': {
+      baseUrl: 'https://api.groq.com/openai/v1',
+      model: 'qwen/qwen3.8-27b',
+      hint: {
+        zh: '到 console.groq.com 建立 API Key。免費方案每天 1,000 次、每分鐘 30 次，但每分鐘只有 8,000 token，不適合整頁翻譯。',
+        en: 'Create a key at console.groq.com. Free: 1,000 requests/day, 30/min, but only 8,000 tokens/min — not for page translation.'
       }
     },
     'mistral': {
@@ -811,6 +849,43 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   });
 
+  document.getElementById('manageSitesBtn').addEventListener('click', () => {
+    chrome.tabs.create({ url: chrome.runtime.getURL('options.html#sites') });
+  });
+  document.getElementById('openGlossaryBtn').addEventListener('click', () => {
+    chrome.tabs.create({ url: chrome.runtime.getURL('options.html#glossary') });
+  });
+  document.getElementById('openVocabularyBtn').addEventListener('click', () => {
+    chrome.tabs.create({ url: chrome.runtime.getURL('options.html#vocabulary') });
+  });
+
+  // 快捷鍵（瀏覽器內建的擴充功能快捷鍵：可以自訂，也可以清空停用）
+  const shortcutDisplay = document.getElementById('shortcutDisplay');
+  const refreshShortcut = () => {
+    if (!chrome.commands?.getAll) return;
+    chrome.commands.getAll(commands => {
+      const command = (commands || []).find(c => c.name === 'toggle-page-translation');
+      shortcutDisplay.textContent = command?.shortcut || (uiLang() === 'zh' ? '未設定' : 'Not set');
+    });
+  };
+  refreshShortcut();
+  document.getElementById('languageSelector').addEventListener('change', refreshShortcut);
+
+  document.getElementById('openShortcutSettingsBtn').addEventListener('click', () => {
+    // Firefox 137 以後有現成的 API 可以直接打開快捷鍵設定
+    if (chrome.commands?.openShortcutSettings) {
+      chrome.commands.openShortcutSettings();
+      return;
+    }
+    if (navigator.userAgent.includes('Firefox')) {
+      showCustomWarning(uiLang() === 'zh'
+        ? '請到「附加元件管理員」→ 右上角齒輪 →「管理擴充套件快捷鍵」設定。'
+        : 'Open Add-ons Manager → gear menu → "Manage Extension Shortcuts".');
+      return;
+    }
+    chrome.tabs.create({ url: 'chrome://extensions/shortcuts' });
+  });
+
   //快取（快取在 background，整個擴充功能共用一份）
   const cacheSizeDisplay = document.getElementById('cacheSizeDisplay');
   const refreshCacheSize = () => {
@@ -842,6 +917,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   });    
   */
+
+// 整頁翻譯顯示方式（改了馬上生效，翻譯中的分頁會自動重新排）
+const pageDisplayModeSelect = document.getElementById('pageDisplayMode');
+chrome.storage.local.get(['pageDisplayMode'], data => {
+  pageDisplayModeSelect.value = data.pageDisplayMode === 'bilingual' ? 'bilingual' : 'replace';
+});
+pageDisplayModeSelect.addEventListener('change', () => {
+  chrome.storage.local.set({ pageDisplayMode: pageDisplayModeSelect.value });
+});
 
 // 自訂右鍵選單
 const contextMenuSelect = document.getElementById('radio');

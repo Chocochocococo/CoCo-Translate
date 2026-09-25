@@ -5,7 +5,7 @@ import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
 
 const SRC = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../src');
-const LIBS = ['markup.js', 'postprocess.js', 'rateLimiter.js', 'translator.js', 'llm.js', 'translationService.js'];
+const LIBS = ['markup.js', 'sitePatterns.js', 'glossary.js', 'dictionary.js', 'postprocess.js', 'rateLimiter.js', 'translator.js', 'llm.js', 'translationService.js'];
 
 /**
  * @param {Object} options

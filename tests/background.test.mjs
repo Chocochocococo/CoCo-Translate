@@ -260,3 +260,84 @@ test('TranslationService: 開啟本地快取時會寫入並讀回', async () => 
   assert.deepEqual(again.translations, ['世界']);
   assert.equal(calls, 1);
 });
+
+// ---------------------------------------------------------------- 不用預填充
+test('OpenAICompatibleTranslator: 只送 system + user，不用 assistant 預填充', async () => {
+  const { context, fetchCalls } = loadBackground({
+    fetch: async (url, init) => {
+      const body = JSON.parse(init.body);
+      return body.response_format ? chatResponse('{"segments":["一","二"]}') : chatResponse('一');
+    }
+  });
+  const translator = new context.OpenAICompatibleTranslator({ provider: 'mistral', apiKey: 'k' });
+  await translator.translateBatch(['one'], 'zh-TW');
+  await translator.translateBatch(['one', 'two'], 'zh-TW');
+  await translator.translateBatch(['<b id="g0">one</b>'], 'zh-TW', 'auto', { html: true });
+  for (const call of fetchCalls) {
+    const body = JSON.parse(call.init.body);
+    assert.deepEqual(body.messages.map(m => m.role), ['system', 'user']);
+    assert.ok(body.messages.every(m => !('prefix' in m)), '不能帶 Mistral 專用的 prefix');
+  }
+});
+
+test('PostProcess: 砍掉模型自己加的開場白，但不誤砍譯文', () => {
+  const { context } = loadBackground();
+  const clean = context.PostProcess.cleanLLMOutput;
+  assert.equal(clean("Here's the translation into Traditional Chinese:\n你好，世界"), '你好，世界');
+  assert.equal(clean('Sure! Here is the translated text:\n\n你好'), '你好');
+  assert.equal(clean('以下是翻譯結果：\n你好'), '你好');
+  assert.equal(clean('翻譯：\n你好'), '你好');
+  // 這些是真正的譯文，不能砍
+  assert.equal(clean('這裡是我的家：\n溫暖又舒適'), '這裡是我的家：\n溫暖又舒適');
+  assert.equal(clean('Here is my home: warm and cozy'), 'Here is my home: warm and cozy');
+  assert.equal(clean('他說：\n「你好」'), '他說：\n「你好」');
+});
+
+// ---------------------------------------------------------------- 字典
+test('Dictionary.lookup: 取出音標與前幾個解釋，非英文單字不查', async () => {
+  const { context, fetchCalls } = loadBackground({
+    fetch: async url => url.endsWith('/fox')
+      ? jsonResponse([{
+        word: 'fox',
+        phonetics: [{ audio: '' }, { text: '/fɒks/' }],
+        meanings: [
+          { partOfSpeech: 'noun', definitions: [{ definition: 'A small wild canine.' }] },
+          { partOfSpeech: 'verb', definitions: [{ definition: 'To trick or fool.' }] }
+        ]
+      }])
+      : new Response('{"title":"No Definitions Found"}', { status: 404 })
+  });
+  const result = plain(await context.Dictionary.lookup('Fox'));
+  assert.deepEqual(result, {
+    phonetic: '/fɒks/',
+    meanings: [
+      { partOfSpeech: 'noun', definition: 'A small wild canine.' },
+      { partOfSpeech: 'verb', definition: 'To trick or fool.' }
+    ]
+  });
+  assert.equal(await context.Dictionary.lookup('asdfqwer'), null);
+  assert.equal(await context.Dictionary.lookup('林楓'), null);
+  assert.equal(await context.Dictionary.lookup('two words'), null);
+  await context.Dictionary.lookup('fox');
+  assert.equal(fetchCalls.length, 2, '查過的字要快取，非英文單字不送出');
+});
+
+test('OpenAICompatibleTranslator: Gemini / Groq 預設值，Gemini 模型清單拿掉 models/ 前綴', async () => {
+  const { context, fetchCalls } = loadBackground({
+    fetch: async url => url.endsWith('/models')
+      ? jsonResponse({ data: [{ id: 'models/gemini-3.5-flash-lite' }, { id: 'models/gemini-3.8-flash' }] })
+      : chatResponse('你好')
+  });
+  const gemini = new context.OpenAICompatibleTranslator({ provider: 'gemini', apiKey: 'g' });
+  await gemini.translateBatch(['Hello'], 'zh-TW');
+  assert.equal(fetchCalls[0].url, 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions');
+  assert.equal(JSON.parse(fetchCalls[0].init.body).model, 'gemini-3.5-flash-lite');
+  assert.deepEqual(plain(await gemini.listModels()), ['gemini-3.5-flash-lite', 'gemini-3.8-flash']);
+
+  const groq = new context.OpenAICompatibleTranslator({ provider: 'groq', apiKey: 'q' });
+  await groq.translateBatch(['Hello'], 'zh-TW');
+  const groqCall = fetchCalls.find(c => c.url.includes('groq'));
+  assert.equal(groqCall.url, 'https://api.groq.com/openai/v1/chat/completions');
+  assert.equal(JSON.parse(groqCall.init.body).model, 'qwen/qwen3.8-27b');
+  await assert.rejects(new context.OpenAICompatibleTranslator({ provider: 'groq' }).translateBatch(['a'], 'zh-TW'), { code: 'config' });
+});

@@ -120,19 +120,9 @@ const broadcastToTabs = async (message) => {
 const asyncHandlers = {
   TRANSLATE_BATCH: (message, sender) => TranslationService.translate({ ...message, pageUrl: sender.tab?.url || '' }),
 
-  // 單字卡：譯文（用觸發式翻譯的來源）＋ 英文字典（音標、解釋）
-  LOOKUP_WORD: async (message, sender) => {
-    const [translated, dictionary] = await Promise.all([
-      TranslationService.translate({
-        role: 'trigger',
-        texts: [message.word],
-        targetLang: message.targetLang,
-        pageUrl: sender.tab?.url || ''
-      }),
-      Dictionary.lookup(message.word)
-    ]);
-    return { translation: translated.translations[0], error: translated.error, dictionary };
-  },
+  // 單字卡的英文字典（音標、解釋）。譯文另外走 TRANSLATE_BATCH，兩邊誰先回來誰先顯示，
+  // 別讓其中一邊卡住整張卡片一直「查詢中」
+  LOOKUP_DICTIONARY: async message => ({ dictionary: await Dictionary.lookup(message.word) }),
 
   LIST_LLM_MODELS: async message => {
     try {

@@ -58,6 +58,8 @@ export function loadBackground({ storage = {}, fetch } = {}) {
     TextDecoder,
     URL,
     structuredClone,
+    AbortSignal,
+    AbortController,
     // 本地快取用記憶體假裝一下
     TranslationCache: {
       async getTranslation(text, lang) { return diskCache.get(`${text}_${lang}`) ?? null; },

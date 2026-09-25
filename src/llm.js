@@ -1,6 +1,9 @@
 // llm.js — OpenAI 相容的 AI 翻譯（Ollama Cloud / OpenRouter / Mistral / 本機 Ollama / 自訂）
 "use strict";
 
+// AI 一次翻一大段要生成很久，逾時放寬一點（其他翻譯來源是 60 秒）
+const LLM_TIMEOUT_MS = 120000;
+
 // 各家預設值。concurrency / rpm 照各家免費方案的限制抓，別一次把額度燒光
 const LLM_PRESETS = {
   'ollama-cloud': {
@@ -155,7 +158,7 @@ class OpenAICompatibleTranslator {
       method: 'POST',
       headers,
       body: JSON.stringify(payload)
-    }, this.label));
+    }, this.label, LLM_TIMEOUT_MS));
 
     if (!response.ok) throw await httpError(response, this.label);
     const data = await response.json();

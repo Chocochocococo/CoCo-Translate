@@ -139,6 +139,23 @@
             <button type="button" data-value="translation" data-i18n="youTubeModeTranslation">只譯文</button>
           </div>
         </div>
+        <label class="row">
+          <span class="label"><span data-i18n="youTubeSize">字幕大小</span><small class="wrap" data-i18n="youTubeSizeHint"></small></span>
+          <span class="pill">
+            <select id="youTubeSubtitleScale">
+              <option value="0.75">75%</option>
+              <option value="1">100%</option>
+              <option value="1.25">125%</option>
+              <option value="1.5">150%</option>
+              <option value="1.75">175%</option>
+              <option value="2">200%</option>
+            </select>
+          </span>
+        </label>
+        <div class="row">
+          <span class="label"><span data-i18n="youTubePosition">字幕位置</span><small class="wrap" data-i18n="youTubePositionHint"></small></span>
+          <button id="resetYouTubePositionBtn" class="btn secondary small" type="button" data-i18n="resetPosition">回到原本位置</button>
+        </div>
       </div>
 
       <div class="card">

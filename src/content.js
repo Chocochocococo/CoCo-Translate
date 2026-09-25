@@ -1918,6 +1918,8 @@ chrome.storage.onChanged.addListener((changes, namespace) => {
   if (changed('enableSelectionButton')) applySelectionButtonSetting(changes.enableSelectionButton.newValue !== false);
   if (changed('enableFloatingButton')) applyFloatingButtonSetting(changes.enableFloatingButton.newValue !== false);
   if (changed('youTubeSubtitleMode')) YouTubeSubtitles.setMode(changes.youTubeSubtitleMode.newValue);
+  if (changed('youTubeSubtitleScale')) YouTubeSubtitles.setScale(changes.youTubeSubtitleScale.newValue);
+  if (changed('youTubeSubtitlePosition')) YouTubeSubtitles.setPosition(changes.youTubeSubtitlePosition.newValue);
   if (changed('enableYouTubeSubtitles')) YouTubeSubtitles.setEnabled(changes.enableYouTubeSubtitles.newValue === true);
 });
 
@@ -1944,6 +1946,10 @@ const YouTubeSubtitles = (() => {
   let renderId = 0;
   let lastTranslated = '';
   let lastSignature = '';
+  let scale = 1;                   // 字幕大小：以 YouTube 字幕設定的大小為準再乘上這個倍率
+  let customPosition = null;       // 使用者拖過的位置 { x, bottom }（播放器寬高的比例）；null＝跟著原字幕
+  let dragging = false;
+  let lastFontSize = 0;
 
   const normalize = text => text.replace(/\s+/g, '');
 
@@ -1993,11 +1999,16 @@ const YouTubeSubtitles = (() => {
       textAlign: 'center',
       lineHeight: '1.35',
       borderRadius: '4px',
-      pointerEvents: 'none',       // 滑鼠穿透到下面透明的原字幕，拖曳照樣有效
+      cursor: 'move',
+      userSelect: 'none',
       zIndex: '60',
       display: 'none',
       whiteSpace: 'pre-line'
     });
+    box.title = uiLanguage === 'zh'
+      ? '拖曳可以移動字幕；按兩下回到原本 CC 的位置'
+      : 'Drag to move the subtitles; double-click to put them back where CC is';
+    enableDragging(box);
     const original = document.createElement('div');
     original.className = 'coco-yt-original';
     Object.assign(original.style, { color: '#ddd', fontSize: '0.85em' });
@@ -2008,25 +2019,94 @@ const YouTubeSubtitles = (() => {
     return box;
   };
 
-  // 每一幀跟著原字幕的位置走（使用者拖曳、控制列出現時 YouTube 會移動它）
+  // 字幕框整個留在播放器裡面（拖太出去、或視窗縮小時）
+  const placeBox = (centerX, bottom, playerRect) => {
+    const halfWidth = box.offsetWidth / 2;
+    const maxBottom = Math.max(0, playerRect.height - box.offsetHeight);
+    centerX = Math.min(Math.max(centerX, halfWidth), Math.max(halfWidth, playerRect.width - halfWidth));
+    bottom = Math.min(Math.max(bottom, 0), maxBottom);
+    box.style.left = `${centerX}px`;
+    box.style.bottom = `${bottom}px`;
+  };
+
+  // 每一幀更新位置：沒拖過就跟著原字幕走（控制列出現時 YouTube 會把它往上推），拖過就停在拖到的地方
   const followNativePosition = () => {
     frame = null;
     if (!box || box.style.display === 'none' || !player) return;
+    const playerRect = player.getBoundingClientRect();
     const [captionWindow] = visibleCaptionWindows();
     if (captionWindow) {
-      const playerRect = player.getBoundingClientRect();
-      const captionRect = captionWindow.getBoundingClientRect();
-      box.style.left = `${captionRect.left + captionRect.width / 2 - playerRect.left}px`;
-      box.style.bottom = `${Math.max(0, playerRect.bottom - captionRect.bottom)}px`;
-      // 字體大小、字型都跟原字幕一樣（使用者在 YouTube 設定的字幕樣式照樣有效）
+      // 字體大小、字型都跟原字幕一樣（使用者在 YouTube 設定的字幕樣式照樣有效），再乘上我們的倍率
       const segment = captionWindow.querySelector('.ytp-caption-segment');
       if (segment) {
         const style = getComputedStyle(segment);
-        box.style.fontSize = style.fontSize;
+        lastFontSize = parseFloat(style.fontSize) || lastFontSize;
         box.style.fontFamily = style.fontFamily;
       }
     }
+    // 還沒讀到原字幕的大小：用 YouTube 預設的大約比例（播放器高度的 1/27）
+    const baseSize = lastFontSize || playerRect.height / 27;
+    box.style.fontSize = `${Math.round(baseSize * scale * 10) / 10}px`;
+
+    if (customPosition) {
+      placeBox(customPosition.x * playerRect.width, customPosition.bottom * playerRect.height, playerRect);
+    } else if (captionWindow) {
+      const captionRect = captionWindow.getBoundingClientRect();
+      placeBox(captionRect.left + captionRect.width / 2 - playerRect.left, playerRect.bottom - captionRect.bottom, playerRect);
+    }
     frame = requestAnimationFrame(followNativePosition);
+  };
+
+  const redraw = () => {
+    if (box && box.style.display !== 'none') frame ??= requestAnimationFrame(followNativePosition);
+  };
+
+  // 自己的拖曳：以前讓滑鼠穿透去拖透明的原字幕，但我們的框比原字幕大（多了譯文），常常點不到，幹
+  const enableDragging = element => {
+    // 別讓 YouTube 收到點擊：單擊會暫停、按兩下會全螢幕
+    ['click', 'dblclick', 'mouseup', 'pointerup'].forEach(type =>
+      element.addEventListener(type, e => e.stopPropagation()));
+
+    element.addEventListener('dblclick', () => {
+      customPosition = null;
+      chrome.storage.local.remove('youTubeSubtitlePosition');
+      redraw();
+    });
+
+    element.addEventListener('mousedown', e => {
+      if (e.button !== 0 || !player) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const playerRect = player.getBoundingClientRect();
+      const boxRect = element.getBoundingClientRect();
+      const startX = e.clientX;
+      const startY = e.clientY;
+      const startCenter = boxRect.left + boxRect.width / 2 - playerRect.left;
+      const startBottom = playerRect.bottom - boxRect.bottom;
+      dragging = false;
+
+      const onMove = moveEvent => {
+        const dx = moveEvent.clientX - startX;
+        const dy = moveEvent.clientY - startY;
+        if (!dragging && Math.hypot(dx, dy) < 3) return;   // 手抖不算拖
+        dragging = true;
+        const rect = player.getBoundingClientRect();
+        placeBox(startCenter + dx, startBottom - dy, rect);
+        customPosition = {
+          x: parseFloat(element.style.left) / rect.width,
+          bottom: parseFloat(element.style.bottom) / rect.height
+        };
+      };
+      const onUp = upEvent => {
+        document.removeEventListener('mousemove', onMove, true);
+        document.removeEventListener('mouseup', onUp, true);
+        upEvent.stopPropagation();
+        if (dragging) chrome.storage.local.set({ youTubeSubtitlePosition: customPosition });
+        dragging = false;
+      };
+      document.addEventListener('mousemove', onMove, true);
+      document.addEventListener('mouseup', onUp, true);
+    });
   };
 
   const hide = () => {
@@ -2141,12 +2221,27 @@ const YouTubeSubtitles = (() => {
     if (enabled) schedule();
   };
 
-  return { setEnabled, setMode, isYouTube };
+  const setScale = value => {
+    const number = parseFloat(value);
+    scale = number >= 0.5 && number <= 3 ? number : 1;
+    redraw();
+  };
+
+  const setPosition = value => {
+    if (dragging) return;   // 自己拖的時候存進去的，不用再套一次
+    const valid = value && Number.isFinite(value.x) && Number.isFinite(value.bottom);
+    customPosition = valid ? { x: value.x, bottom: value.bottom } : null;
+    redraw();
+  };
+
+  return { setEnabled, setMode, setScale, setPosition, isYouTube };
 })();
 
 if (YouTubeSubtitles.isYouTube) {
-  chrome.storage.local.get(['enableYouTubeSubtitles', 'youTubeSubtitleMode'], data => {
+  chrome.storage.local.get(['enableYouTubeSubtitles', 'youTubeSubtitleMode', 'youTubeSubtitleScale', 'youTubeSubtitlePosition'], data => {
     YouTubeSubtitles.setMode(data.youTubeSubtitleMode);
+    YouTubeSubtitles.setScale(data.youTubeSubtitleScale);
+    YouTubeSubtitles.setPosition(data.youTubeSubtitlePosition);
     YouTubeSubtitles.setEnabled(data.enableYouTubeSubtitles === true);
   });
 }

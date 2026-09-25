@@ -135,6 +135,15 @@ function initGeneral() {
     defaultValue: 'bilingual',
     normalize: value => (value === 'translation' ? 'translation' : 'bilingual')
   });
+  bindSelect('youTubeSubtitleScale', 'youTubeSubtitleScale', { defaultValue: '1', normalize: value => String(value) });
+  // 在影片上拖過字幕框之後，這裡可以一鍵放回原本 CC 的位置（在影片上按兩下字幕框也可以）
+  const resetPositionButton = $('resetYouTubePositionBtn');
+  const showPositionState = position => { resetPositionButton.disabled = !position; };
+  chrome.storage.local.get(['youTubeSubtitlePosition'], data => showPositionState(data.youTubeSubtitlePosition));
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === 'local' && changes.youTubeSubtitlePosition) showPositionState(changes.youTubeSubtitlePosition.newValue);
+  });
+  resetPositionButton.addEventListener('click', () => chrome.storage.local.remove('youTubeSubtitlePosition'));
 
   // 背景的 PostProcess 直接監聽 storage，改了馬上生效
   bindSwitch('enableCustomRegex', 'enableCustomRegex', { defaultValue: true });

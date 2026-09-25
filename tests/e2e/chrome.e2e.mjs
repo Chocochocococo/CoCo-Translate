@@ -532,7 +532,13 @@ try {
           </div>
         </div>
         <button class="ytp-subtitles-button" aria-pressed="true">CC</button>
-      </div></body></html>`
+      </div>
+      <script>
+        // 真的 YouTube 點播放器會暫停、按兩下會全螢幕：數一下有沒有點擊漏到播放器
+        window.playerClicks = 0;
+        document.getElementById('movie_player').addEventListener('click', () => window.playerClicks++);
+        document.getElementById('movie_player').addEventListener('dblclick', () => window.playerClicks++);
+      </script></body></html>`
   }));
   const yt = await context.newPage();
   yt.on('pageerror', err => errors.push('youtube pageerror: ' + err.message));
@@ -569,6 +575,49 @@ try {
     await yt.waitForTimeout(200);
     assert.ok(await aligned(), '拖曳後要跟著移動');
     await yt.evaluate(() => { document.querySelector('.ytp-caption-window-bottom').style.bottom = '20px'; });
+  });
+  await sw.evaluate(() => chrome.storage.local.set({ youTubeSubtitleScale: '1.5' }));
+  await check('YouTube 字幕：字幕大小可以調整（原字幕 20px × 150%）', async () => {
+    await yt.waitForFunction(() => getComputedStyle(document.querySelector('#coco-yt-subtitle')).fontSize === '30px', null, { timeout: 3000 });
+  });
+  await sw.evaluate(() => chrome.storage.local.set({ youTubeSubtitleScale: '1' }));
+  await yt.waitForFunction(() => getComputedStyle(document.querySelector('#coco-yt-subtitle')).fontSize === '20px', null, { timeout: 3000 });
+
+  const ytRects = () => yt.evaluate(() => {
+    const box = document.querySelector('#coco-yt-subtitle').getBoundingClientRect();
+    const caption = document.querySelector('.ytp-caption-window-bottom').getBoundingClientRect();
+    return { box: { x: box.left + box.width / 2, y: box.top + box.height / 2, bottom: box.bottom }, captionBottom: caption.bottom };
+  });
+  const beforeDrag = await ytRects();
+  await yt.mouse.move(beforeDrag.box.x, beforeDrag.box.y);
+  await yt.mouse.down();
+  await yt.mouse.move(beforeDrag.box.x + 40, beforeDrag.box.y - 100, { steps: 5 });
+  await yt.mouse.up();
+  await check('YouTube 字幕：字幕框可以直接用滑鼠拖曳，而且不會點到播放器', async () => {
+    const after = await ytRects();
+    assert.ok(Math.abs(after.box.bottom - (beforeDrag.box.bottom - 100)) < 2, `往上拖 100px，實際 ${beforeDrag.box.bottom - after.box.bottom}px`);
+    assert.ok(Math.abs(after.box.x - (beforeDrag.box.x + 40)) < 2);
+    assert.equal(await yt.evaluate(() => window.playerClicks), 0);
+    await yt.waitForTimeout(200);
+    const { youTubeSubtitlePosition } = await sw.evaluate(() => chrome.storage.local.get('youTubeSubtitlePosition'));
+    assert.ok(youTubeSubtitlePosition && youTubeSubtitlePosition.bottom > 0, '拖過的位置要存起來');
+  });
+  await yt.evaluate(() => { document.querySelector('.ytp-caption-window-bottom').style.bottom = '60px'; });
+  await check('YouTube 字幕：拖過之後就停在那裡，不再跟著原字幕跑', async () => {
+    await yt.waitForTimeout(200);
+    const now = await ytRects();
+    assert.ok(Math.abs(now.box.bottom - (beforeDrag.box.bottom - 100)) < 2);
+  });
+  await yt.evaluate(() => { document.querySelector('.ytp-caption-window-bottom').style.bottom = '20px'; });
+  const dragged = await ytRects();
+  await yt.mouse.dblclick(dragged.box.x, dragged.box.y);
+  await check('YouTube 字幕：按兩下回到原本 CC 的位置', async () => {
+    await yt.waitForTimeout(300);
+    const now = await ytRects();
+    assert.ok(Math.abs(now.box.bottom - now.captionBottom) < 2);
+    assert.equal(await yt.evaluate(() => window.playerClicks), 0);
+    const { youTubeSubtitlePosition } = await sw.evaluate(() => chrome.storage.local.get('youTubeSubtitlePosition'));
+    assert.equal(youTubeSubtitlePosition, undefined);
   });
   const beforeRolling = llmRequests.length;
   for (const partial of ['Today we', 'Today we will', 'Today we will learn', 'Today we will learn about', 'Today we will learn about foxes']) {

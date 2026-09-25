@@ -347,6 +347,53 @@ try {
     await page.waitForFunction(() => document.querySelector('#p2').textContent === 'The quick brown fox', null, { timeout: 3000 });
   });
 
+  // 7-2. 設定頁：網站清單
+  const options = await context.newPage();
+  options.on('pageerror', err => errors.push('options pageerror: ' + err.message));
+  await options.goto(`chrome-extension://${extId}/options.html#sites`);
+  await options.fill('#siteInput', ' 127.0.0.1/some/page ');
+  await options.click('#addSiteBtn');
+  await check('設定頁：新增網站時自動整理格式', async () => {
+    await options.waitForFunction(() => document.querySelectorAll('#siteList li').length === 1, null, { timeout: 3000 });
+    assert.equal(await options.textContent('#siteList li code'), '127.0.0.1');
+  });
+  const autoPage = await context.newPage();
+  await autoPage.goto(origin);
+  await check('設定頁：網域規則會自動整頁翻譯', async () => {
+    await autoPage.waitForFunction(() => document.querySelector('#p2').textContent === '[譯]The quick brown fox', null, { timeout: 5000 });
+  });
+  await autoPage.close();
+  await options.click('#siteList li button');
+  await check('設定頁：刪除網站', async () => {
+    await options.waitForFunction(() => document.querySelectorAll('#siteList li').length === 0, null, { timeout: 3000 });
+    const { siteTranslationList } = await sw.evaluate(() => chrome.storage.local.get('siteTranslationList'));
+    assert.deepEqual(siteTranslationList, []);
+  });
+  await options.close();
+
+  // 7-3. popup 勾選框認得萬用字元規則
+  await sw.evaluate(() => chrome.storage.local.set({ siteTranslationList: ['*.0.0.1'] }));
+  const sitePopup = await context.newPage();
+  await sitePopup.addInitScript(([id, o]) => {
+    const realQuery = chrome.tabs.query.bind(chrome.tabs);
+    chrome.tabs.query = (q, cb) => q.active ? cb([{ id, url: o + '/' }]) : realQuery(q, cb);
+  }, [tabId, origin]);
+  await sitePopup.goto(`chrome-extension://${extId}/popup.html`);
+  await sitePopup.waitForTimeout(400);
+  await check('popup：萬用字元規則套用的網站會打勾', async () => {
+    assert.equal(await sitePopup.isChecked('#alwaysTranslateCheckbox'), true);
+  });
+  await sitePopup.click('#alwaysTranslateCheckbox');
+  await sitePopup.waitForTimeout(300);
+  await check('popup：取消勾選萬用字元規則時，提示到設定頁修改', async () => {
+    assert.match(await sitePopup.textContent('#custom-warning-modal p'), /\*\.0\.0\.1/);
+    assert.equal(await sitePopup.isChecked('#alwaysTranslateCheckbox'), true);
+    const { siteTranslationList } = await sw.evaluate(() => chrome.storage.local.get('siteTranslationList'));
+    assert.deepEqual(siteTranslationList, ['*.0.0.1']);
+  });
+  await sitePopup.close();
+  await sw.evaluate(() => chrome.storage.local.set({ siteTranslationList: [] }));
+
   // 8. popup：AI 設定與模型清單
   const popup = await context.newPage();
   popup.on('pageerror', err => errors.push('popup pageerror: ' + err.message));

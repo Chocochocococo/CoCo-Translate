@@ -508,13 +508,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     } catch (e) {
       // 拿不到網址就算了
     }
+    const zh = () => (document.getElementById('languageSelector')?.value || 'zh') === 'zh';
     // chrome:// 、about: 這類頁面跑不了 content script，勾了也沒用
     if (!currentUrl || !/^https?:/.test(currentUrl)) {
       checkbox.disabled = true;
       return;
     }
+    // 萬用字元規則（*.example.com）也算：設定頁加的規則，這裡一樣會打勾
     chrome.storage.local.get(["siteTranslationList"], data => {
-      checkbox.checked = (data.siteTranslationList || []).includes(currentUrl);
+      checkbox.checked = !!SitePatterns.findMatch(data.siteTranslationList, tab.url);
     });
     checkbox.addEventListener('change', () => {
       const shouldTranslate = checkbox.checked;
@@ -523,9 +525,20 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (shouldTranslate) {
           if (!siteList.includes(currentUrl)) siteList.push(currentUrl);
         } else {
-          siteList = siteList.filter(site => site !== currentUrl);
+          const exact = SitePatterns.exactEntriesFor(siteList, tab.url);
+          siteList = siteList.filter(site => !exact.includes(site));
+          // 還有萬用字元規則套用在這個網站 → 這裡拿不掉，請使用者到設定頁管理
+          const stillMatched = SitePatterns.findMatch(siteList, tab.url);
+          if (stillMatched) {
+            checkbox.checked = true;
+            showCustomWarning(zh()
+              ? `這個網站是由規則「${stillMatched}」套用的，請到設定頁的網站清單修改。`
+              : `This site is covered by the rule "${stillMatched}". Edit it in the site list on the settings page.`);
+            if (!exact.length) return;
+          }
         }
         chrome.storage.local.set({ siteTranslationList: siteList }, () => {
+          if (!shouldTranslate && SitePatterns.findMatch(siteList, tab.url)) return;
           // 勾選當下就直接翻譯、取消勾選就還原，不用再重新整理頁面
           const type = shouldTranslate ? 'TRANSLATE_PAGE' : 'RESTORE_PAGE';
           chrome.tabs.sendMessage(tab.id, { type }, () => void chrome.runtime.lastError);
@@ -550,7 +563,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
   
   document.getElementById('importRegex').addEventListener('click', () => {
-    chrome.runtime.openOptionsPage();
+    chrome.tabs.create({ url: chrome.runtime.getURL('options.html#regex') });
   });
 
   chrome.storage.local.get(['enableFloatingButton'], data => {
@@ -809,6 +822,10 @@ document.addEventListener('DOMContentLoaded', async () => {
       llmModelInput.value = '';
       llmModelInput.focus();
     });
+  });
+
+  document.getElementById('manageSitesBtn').addEventListener('click', () => {
+    chrome.tabs.create({ url: chrome.runtime.getURL('options.html#sites') });
   });
 
   // 快捷鍵（瀏覽器內建的擴充功能快捷鍵：可以自訂，也可以清空停用）

@@ -1,0 +1,167 @@
+/* 設定頁 - 幹，終於有地方放這麼多東西了 */
+body {
+  font-family: Arial, sans-serif;
+  margin: 0;
+  display: flex;
+  min-height: 100vh;
+  background-color: #f9f9f9; /* 他媽的，跟 popup 同一個底色 */
+  color: #333;
+  line-height: 1.5;
+}
+
+.side-nav {
+  width: 200px;
+  flex-shrink: 0;
+  padding: 20px 12px;
+  background: #fff;
+  border-right: 1px solid #e0e0e0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.side-nav h1 {
+  font-size: 18px;
+  margin: 0 8px 12px;
+  color: #2c3e50;
+}
+
+.side-nav a {
+  padding: 8px 10px;
+  border-radius: 6px;
+  color: #333;
+  text-decoration: none; /* 靠北，底線好醜 */
+}
+
+.side-nav a:hover {
+  background: #f0f4f8;
+}
+
+.side-nav a.active {
+  background: #3498db;
+  color: #fff;
+}
+
+main {
+  flex: 1;
+  padding: 24px 32px;
+  max-width: 820px;
+}
+
+.panel {
+  display: none;
+}
+
+.panel.active {
+  display: block;
+}
+
+h2 {
+  font-size: 22px;
+  margin: 0 0 8px;
+  color: #2c3e50;
+}
+
+.description {
+  margin: 0 0 12px;
+  color: #555;
+}
+
+.examples {
+  margin: 0 0 16px;
+  padding-left: 20px;
+  color: #555;
+  font-size: 14px;
+}
+
+code {
+  background: #eef2f5;
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+
+.row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.text-input,
+select.text-input {
+  padding: 7px 9px;
+  font-size: 14px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  min-width: 180px;
+  box-sizing: border-box;
+}
+
+.btn {
+  padding: 7px 16px;
+  font-size: 14px;
+  color: #fff;
+  background-color: #3498db;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.btn:hover {
+  background-color: #2980b9;
+}
+
+.btn.secondary {
+  background-color: #95a5a6; /* 他媽的，次要按鈕灰一點 */
+}
+
+.btn.secondary:hover {
+  background-color: #7f8c8d;
+}
+
+.btn.small {
+  padding: 3px 10px;
+  font-size: 13px;
+}
+
+.item-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  background: #fff;
+}
+
+.item-list:empty {
+  display: none;
+}
+
+.item-list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.item-list li:last-child {
+  border-bottom: none;
+}
+
+.item-list li .grow {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.empty {
+  color: #999;
+  font-style: italic;
+}
+
+.hint {
+  font-size: 13px;
+  color: #777;
+}

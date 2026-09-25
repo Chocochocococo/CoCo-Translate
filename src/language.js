@@ -36,6 +36,16 @@ const i18nStrings = {
       useDiskCacheLabelID: "Enable local cached translation",
       clearCacheBtnID: "Clear Cache",
       shortcutLabelID: "Shortcut:",
+      manageSitesBtnID: "Manage sites",
+      navSitesID: "Sites",
+      navRegexID: "Regex",
+      sitesTitleID: "Always Translate These Sites",
+      sitesDescriptionID: "Pages on these sites are translated automatically when they open.",
+      siteExampleHostID: "this domain only (http and https)",
+      siteExampleWildcardID: "example.com and all its subdomains",
+      siteExampleOriginID: "this exact origin",
+      addSiteBtnID: "Add",
+      siteListEmptyID: "No sites yet.",
       pageDisplayModeLabelID: "Page Translation:",
       displayReplace: "Replace Original",
       displayBilingual: "Bilingual",
@@ -94,6 +104,16 @@ const i18nStrings = {
       useDiskCacheLabelID: "啟用本地快取譯文",
       clearCacheBtnID: "清除快取",
       shortcutLabelID: "快捷鍵：",
+      manageSitesBtnID: "管理網站清單",
+      navSitesID: "網站清單",
+      navRegexID: "正規表達式",
+      sitesTitleID: "總是翻譯的網站",
+      sitesDescriptionID: "打開這些網站的網頁時，會自動整頁翻譯。",
+      siteExampleHostID: "只有這個網域（http、https 都算）",
+      siteExampleWildcardID: "example.com 和它所有的子網域",
+      siteExampleOriginID: "只有這個完整的來源",
+      addSiteBtnID: "新增",
+      siteListEmptyID: "還沒有加入任何網站。",
       pageDisplayModeLabelID: "整頁翻譯顯示：",
       displayReplace: "取代原文",
       displayBilingual: "雙語對照",
@@ -129,6 +149,16 @@ const i18nStrings = {
     setText("useDiskCacheLabel", dict.useDiskCacheLabelID);
     setText("clearCacheBtn", dict.clearCacheBtnID);
     setText("shortcutLabel", dict.shortcutLabelID);
+    setText("manageSitesBtn", dict.manageSitesBtnID);
+    setText("navSites", dict.navSitesID);
+    setText("navRegex", dict.navRegexID);
+    setText("sitesTitle", dict.sitesTitleID);
+    setText("sitesDescription", dict.sitesDescriptionID);
+    setText("siteExampleHost", dict.siteExampleHostID);
+    setText("siteExampleWildcard", dict.siteExampleWildcardID);
+    setText("siteExampleOrigin", dict.siteExampleOriginID);
+    setText("addSiteBtn", dict.addSiteBtnID);
+    setText("siteListEmpty", dict.siteListEmptyID);
     setText("pageDisplayModeLabel", dict.pageDisplayModeLabelID);
     const optReplace = document.querySelector('#pageDisplayMode option[value="replace"]');
     const optBilingual = document.querySelector('#pageDisplayMode option[value="bilingual"]');

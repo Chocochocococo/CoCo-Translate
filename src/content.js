@@ -1612,8 +1612,7 @@ chrome.runtime.sendMessage({ type: 'CONTENT_READY' }, () => void chrome.runtime.
 
 // Auto-start page translation for whitelisted sites
 chrome.storage.local.get(["siteTranslationList"], async data => {
-  const list = data.siteTranslationList || [];
-  if (!list.includes(window.location.origin)) return;
+  if (!SitePatterns.findMatch(data.siteTranslationList, window.location.href)) return;
   // 同步通知 background，右鍵選單才會顯示 Restore Page
   chrome.runtime.sendMessage({ type: 'TRANSLATE_PAGE' }, () => void chrome.runtime.lastError);
   await translatePage();

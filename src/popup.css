@@ -330,3 +330,15 @@ body {
   background: #fff;
   font-family: inherit;
 }
+
+/* 「管理網站清單」看起來像連結 - 靠北，別搶了勾選框的風頭 */
+.link-btn {
+  margin-left: 6px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: #3498db;
+  font-size: 12px;
+  cursor: pointer;
+  text-decoration: underline;
+}

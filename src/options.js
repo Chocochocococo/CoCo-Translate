@@ -1,4 +1,4 @@
-// options.js — 匯入正規表達式（popup 開檔案對話框時，Firefox 會把 popup 關掉，所以搬到這一頁）
+// options.js — 設定頁：網站清單、匯入正規表達式（之後的術語表、生字本也放這裡）
 function showCustomWarning(message) {
   // 檢查是否已有現成的提示窗，避免重複產生
   let existingModal = document.getElementById('custom-warning-modal');
@@ -31,17 +31,19 @@ function showCustomWarning(message) {
     padding: '20px',
     borderRadius: '8px',
     boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
-    textAlign: 'center'
+    textAlign: 'center',
+    maxWidth: '420px'
   });
   const paragraph = document.createElement('p');
   paragraph.style.margin = '0 0 10px';
+  paragraph.style.whiteSpace = 'pre-line';
   paragraph.textContent = message;
   content.appendChild(paragraph);
 
   // 建立 OK 按鈕
   const okButton = document.createElement('button');
   okButton.textContent = 'OK';
-  Object.assign(okButton.style, { padding: '5px 10px', border: 'none', borderRadius: '4px', cursor: 'pointer' });
+  okButton.className = 'btn';
   okButton.addEventListener('click', () => {
     modal.style.display = 'none';
   });
@@ -51,25 +53,91 @@ function showCustomWarning(message) {
   document.body.appendChild(modal);
 }
 
-document.addEventListener('DOMContentLoaded', () => {
-  getStorageLang().then((savedLang) => {
-    applyLanguage(savedLang || "zh");
+let uiLang = 'zh';
+const t = (zh, en) => (uiLang === 'zh' ? zh : en);
+
+// 小工具：建立一列「內容 + 刪除按鈕」
+function createListItem(contentNodes, onDelete) {
+  const item = document.createElement('li');
+  const grow = document.createElement('div');
+  grow.className = 'grow';
+  grow.append(...contentNodes);
+  const deleteButton = document.createElement('button');
+  deleteButton.className = 'btn secondary small';
+  deleteButton.textContent = t('刪除', 'Delete');
+  deleteButton.addEventListener('click', onDelete);
+  item.append(grow, deleteButton);
+  return item;
+}
+
+// ---------------- 分頁切換 ----------------
+function showSection(id) {
+  const sections = [...document.querySelectorAll('.panel')];
+  const target = sections.find(section => section.id === id) || sections[0];
+  sections.forEach(section => section.classList.toggle('active', section === target));
+  document.querySelectorAll('.side-nav a').forEach(link => {
+    link.classList.toggle('active', link.dataset.section === target.id);
+  });
+}
+
+// ---------------- 總是翻譯的網站 ----------------
+function initSites() {
+  const input = document.getElementById('siteInput');
+  const list = document.getElementById('siteList');
+  const empty = document.getElementById('siteListEmpty');
+
+  const render = sites => {
+    list.innerHTML = '';
+    sites.forEach(site => {
+      const code = document.createElement('code');
+      code.textContent = site;
+      list.appendChild(createListItem([code], () => {
+        chrome.storage.local.get(['siteTranslationList'], data => {
+          const updated = (data.siteTranslationList || []).filter(entry => entry !== site);
+          chrome.storage.local.set({ siteTranslationList: updated });
+        });
+      }));
+    });
+    empty.style.display = sites.length ? 'none' : 'block';
+  };
+
+  const add = () => {
+    const pattern = SitePatterns.normalize(input.value);
+    if (!pattern) {
+      showCustomWarning(t('看不懂這個網址，請輸入像 example.com 或 *.example.com 這樣的格式。',
+        'Please enter something like example.com or *.example.com.'));
+      return;
+    }
+    chrome.storage.local.get(['siteTranslationList'], data => {
+      const sites = data.siteTranslationList || [];
+      if (!sites.includes(pattern)) sites.push(pattern);
+      chrome.storage.local.set({ siteTranslationList: sites }, () => {
+        input.value = '';
+      });
+    });
+  };
+
+  document.getElementById('addSiteBtn').addEventListener('click', add);
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter') add();
   });
 
+  chrome.storage.local.get(['siteTranslationList'], data => render(data.siteTranslationList || []));
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === 'local' && changes.siteTranslationList) render(changes.siteTranslationList.newValue || []);
+  });
+}
+
+// ---------------- 匯入正規表達式 ----------------
+function initRegexImport() {
   const importFile = document.getElementById('importFile');
-  const importBtn = document.getElementById('importBtn');
+  document.getElementById('importBtn').addEventListener('click', () => importFile.click());
 
-  importBtn.addEventListener('click', () => {
-    // 讓使用者自行選擇檔案
-    importFile.click();
-  });
-
-  importFile.addEventListener('change', (e) => {
+  importFile.addEventListener('change', e => {
     const file = e.target.files[0];
     if (!file) return; // 未選擇檔案
-
     const reader = new FileReader();
-    reader.onload = (evt) => {
+    reader.onload = evt => {
       try {
         const imported = JSON.parse(evt.target.result);
         if (!Array.isArray(imported)) {
@@ -87,4 +155,15 @@ document.addEventListener('DOMContentLoaded', () => {
     };
     reader.readAsText(file);
   });
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  getStorageLang().then(savedLang => {
+    uiLang = savedLang || 'zh';
+    applyLanguage(uiLang);
+  });
+  showSection(location.hash.slice(1));
+  window.addEventListener('hashchange', () => showSection(location.hash.slice(1)));
+  initSites();
+  initRegexImport();
 });

@@ -1,6 +1,6 @@
 # CoCo Translate 更新計畫（v1.4 草案）
 
-> 掃描基準：`CoCo Translate Chrome/`（v1.3.2.0，MV3）＋ `Coco Translate v1.3.2.0.xpi`（Firefox，MV2）
+> 掃描基準：`CoCo Translate Chrome/`（v1.3.2.0，MV3）＋ `Coco Translate Firefox/`（v1.3.2.0，MV2）
 > 撰寫日期：2026-09-25
 
 ---
@@ -10,9 +10,25 @@
 | 項目 | 狀態 |
 |---|---|
 | Chrome 版原始碼 | 在 repo 內，約 4,100 行，無建置流程、無測試 |
-| Firefox 版原始碼 | **只有打包好的 `.xpi`**，內容已與 Chrome 版分岔（popup.js 差約 280 行、多了 `options.html/js`、背景頁有 `onStartup` 修正） |
+| Firefox 版原始碼 | 已放進 repo，內容與 `v1.3.2.0.xpi` 完全一致（只差換行字元 CRLF/LF）。與 Chrome 版的**實質差異很小**，見下表 |
 | 翻譯來源 | Google（免金鑰）、Cloud Translation、Bing（Edge token）、DeepL、Mistral |
 | Mistral | 2026-09-03 起免費 Experiment 方案不再附每月約 10 億 token 的 API 額度，改為另購 API 點數 → 目前等於不能免費用 |
+
+
+### Chrome 版 vs Firefox 版實際差異
+
+把 `browser.*` 換成 `chrome.*` 之後再比對，真正不同的只有這幾處：
+
+| 項目 | Chrome | Firefox |
+|---|---|---|
+| Manifest | MV3，service worker | MV2，常駐 background page |
+| 圖示 API | `chrome.action` | `browser.browserAction` |
+| 右鍵選單 | 只在 `onInstalled` 建立 | 另外在 `onStartup` 重建（修正重開瀏覽器選單消失） |
+| Regex 匯入 | popup 內直接開檔案選擇器 | 開 `options.html`（Firefox popup 開檔案對話框時會自己關掉） |
+| content scripts | **多注入了 `popup.js`**（見 2-9） | 沒有 |
+| translationCache.js | 多了幾個註解掉的函式 | — |
+
+`content.js`、`translator.js` 除了命名空間以外**一模一樣**，所以合併成單一原始碼的成本很低。
 
 ---
 
@@ -51,13 +67,14 @@ Chrome 會依呼叫順序回傳，所以自動翻譯執行時 `pageTranslator` �
 | 2-6 | `translator.js:324` | Content-Type 打成 `application/application/json+protobuf` |
 | 2-7 | Firefox `background.js` 有 `onStartup` 重建右鍵選單的修正，Chrome 版沒有 |
 | 2-8 | `content.js` 多處 | `translateBtn` 未宣告（隱式全域）、`popup.js:349` 的 `enableSelectionButton` 也是 |
+| 2-9 | Chrome `manifest.json:29` | content scripts 清單裡多了 `popup.js`，等於把 popup 的程式碼注入到每個網頁。若它的 `DOMContentLoaded` 回呼有執行，會在每個頁面塞一個隱藏的 `#apiModal`，接著因為找不到 `openApiModalBtn` 拋錯。content.js 沒有用到 popup.js 的任何函式，直接拿掉即可 |
 
 ### 🟡 P2：安全與品質
 
 - `popup.js:397` 把 regex 規則直接塞進 `innerHTML`，匯入惡意 JSON 會造成 HTML injection；`showCustomWarning` 同理 → 改用 `textContent` / DOM API
 - 五個 Translator class 有大量重複（快取、引號轉換、regex 後處理各寫五次）
-- console 訊息含髒話，使用者打開 DevTools 會看到，上架前建議清掉
-- 沒有 lint、沒有自動化測試、沒有打包腳本；`.xpi` 二進位檔直接 commit 在 repo
+- console 訊息的「他媽的」風格：**保留，這是特色** 🫡
+- 沒有 lint、沒有自動化測試、沒有打包腳本；`Coco Translate v1.3.2.0.xpi` 二進位檔直接 commit 在 repo
 
 ---
 
@@ -133,7 +150,8 @@ manifests/
 scripts/build.mjs    產出 dist/chrome/、dist/firefox/ 與 zip/xpi
 ```
 
-- 用 `chrome.*` API（Firefox 也支援 `chrome` 命名空間），把 Firefox 版的 `options.html` 與 `onStartup` 修正合併回來
+- 統一用 `chrome.*` API（Firefox 也支援 `chrome` 命名空間），`content.js`／`translator.js` 可直接共用
+- 把 Firefox 版的 `onStartup` 選單修正合併到兩邊；Regex 匯入兩邊都改走 options 頁（Chrome 也適用，還能順便當網站清單管理頁）
 - `.xpi` 從 repo 移除，改放 GitHub Releases
 - 加 ESLint；翻譯器核心（分段、解析、引號轉換）寫單元測試
 
@@ -143,11 +161,11 @@ scripts/build.mjs    產出 dist/chrome/、dist/firefox/ 與 zip/xpi
 
 | 階段 | 內容 | 預估規模 | 版本 |
 |---|---|---|---|
-| **Phase 1：修 Bug** | 1-1～1-3「總是翻譯此網站」、設定不生效（改 `storage.onChanged`）、2-1、2-2、2-6、2-7、2-8 | 小，約 1～2 天 | v1.3.3 |
-| **Phase 2：重整結構** | 合併 Firefox 分支、建置腳本、翻譯請求移到 background、統一快取與限流、Translator 抽共用基底 | 中 | v1.4.0 |
+| **Phase 1：修 Bug** | 1-1～1-3「總是翻譯此網站」、設定不生效（改 `storage.onChanged`）、2-1、2-2、2-6～2-9；Chrome、Firefox 兩個資料夾同步修 | 小，約 1～2 天 | v1.3.3 |
+| **Phase 2：重整結構** | 兩版合併成單一 `src/`、建置腳本、翻譯請求移到 background、統一快取與限流、Translator 抽共用基底 | 中 | v1.4.0 |
 | **Phase 3：新 AI 來源** | `OpenAICompatibleTranslator`、Ollama Cloud / OpenRouter / 本機 Ollama 預設、模型清單、JSON 分段、錯誤提示 UI | 中 | v1.4.0 |
 | **Phase 4：整頁翻譯效能** | 批次化、只翻可見區域、SPA 換頁偵測 | 中 | v1.5.0 |
-| **Phase 5：打磨** | 安全修正（innerHTML）、清掉 console 髒話、網站清單管理頁（支援萬用字元 `*.example.com`）、README／Notion 文件更新 | 小 | v1.5.x |
+| **Phase 5：打磨** | 安全修正（innerHTML）、網站清單管理頁（支援萬用字元 `*.example.com`）、README／Notion 文件更新 | 小 | v1.5.x |
 
 建議順序：**先做 Phase 1**（馬上能用、風險低），再把 Phase 2 + 3 一起做，因為新的 AI 來源最好直接建立在 background 架構上，不用寫兩次。
 

@@ -66,7 +66,7 @@ function loadLLMSettings(callback) {
   });
 }
 
-const LLM_PROVIDERS_NEED_KEY = ['ollama-cloud', 'openrouter', 'mistral'];
+const LLM_PROVIDERS_NEED_KEY = ['ollama-cloud', 'openrouter', 'gemini', 'groq', 'mistral'];
 
 // 檢查選擇的翻譯來源是否已儲存對應的 API key，回傳警告訊息（沒問題就回傳空字串）
 function checkAPIKey(selectedSource, isPage) {
@@ -696,6 +696,22 @@ document.addEventListener('DOMContentLoaded', async () => {
       hint: {
         zh: '到 openrouter.ai/keys 建立金鑰。模型名稱結尾是 :free 的就免費（每分鐘 20 次、每天 50 次）。',
         en: 'Create a key at openrouter.ai/keys. Models ending in :free cost nothing (20 requests/min, 50/day).'
+      }
+    },
+    'gemini': {
+      baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
+      model: 'gemini-3.5-flash-lite',
+      hint: {
+        zh: '到 aistudio.google.com 建立 API Key。Flash-Lite 系列免費，每天約 500 次、每分鐘約 10 次。',
+        en: 'Create a key at aistudio.google.com. Flash-Lite models are free: about 500 requests/day, ~10/min.'
+      }
+    },
+    'groq': {
+      baseUrl: 'https://api.groq.com/openai/v1',
+      model: 'qwen/qwen3.8-27b',
+      hint: {
+        zh: '到 console.groq.com 建立 API Key。免費方案每天 1,000 次、每分鐘 30 次，但每分鐘只有 8,000 token，不適合整頁翻譯。',
+        en: 'Create a key at console.groq.com. Free: 1,000 requests/day, 30/min, but only 8,000 tokens/min — not for page translation.'
       }
     },
     'mistral': {

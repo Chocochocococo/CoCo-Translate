@@ -575,6 +575,13 @@ try {
     assert.deepEqual(llmSettings.providers.openrouter, { apiKey: 'sk-or-test', model: 'google/gemma-4-31b-it:free', baseUrl: '' });
     assert.equal(llmSettings.providers['ollama-local'].baseUrl, llmBaseUrl);
   });
+  await popup.selectOption('#llmProvider', 'gemini');
+  await check('popup：Gemini 預設模型與申請說明', async () => {
+    assert.equal(await popup.inputValue('#llmModel'), 'gemini-3.5-flash-lite');
+    assert.match(await popup.textContent('#llmHint'), /aistudio\.google\.com/);
+    const providers = await popup.$$eval('#llmProvider option', os => os.map(o => o.value));
+    assert.deepEqual(providers, ['ollama-cloud', 'openrouter', 'gemini', 'groq', 'mistral', 'ollama-local', 'custom']);
+  });
   await check('popup：翻譯來源選單有 AI (LLM)', async () => {
     await popup.click('#tabGeneral');
     await popup.click('#openApiModalBtn');

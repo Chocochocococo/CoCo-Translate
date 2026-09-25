@@ -321,3 +321,23 @@ test('Dictionary.lookup: 取出音標與前幾個解釋，非英文單字不查'
   await context.Dictionary.lookup('fox');
   assert.equal(fetchCalls.length, 2, '查過的字要快取，非英文單字不送出');
 });
+
+test('OpenAICompatibleTranslator: Gemini / Groq 預設值，Gemini 模型清單拿掉 models/ 前綴', async () => {
+  const { context, fetchCalls } = loadBackground({
+    fetch: async url => url.endsWith('/models')
+      ? jsonResponse({ data: [{ id: 'models/gemini-3.5-flash-lite' }, { id: 'models/gemini-3.8-flash' }] })
+      : chatResponse('你好')
+  });
+  const gemini = new context.OpenAICompatibleTranslator({ provider: 'gemini', apiKey: 'g' });
+  await gemini.translateBatch(['Hello'], 'zh-TW');
+  assert.equal(fetchCalls[0].url, 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions');
+  assert.equal(JSON.parse(fetchCalls[0].init.body).model, 'gemini-3.5-flash-lite');
+  assert.deepEqual(plain(await gemini.listModels()), ['gemini-3.5-flash-lite', 'gemini-3.8-flash']);
+
+  const groq = new context.OpenAICompatibleTranslator({ provider: 'groq', apiKey: 'q' });
+  await groq.translateBatch(['Hello'], 'zh-TW');
+  const groqCall = fetchCalls.find(c => c.url.includes('groq'));
+  assert.equal(groqCall.url, 'https://api.groq.com/openai/v1/chat/completions');
+  assert.equal(JSON.parse(groqCall.init.body).model, 'qwen/qwen3.8-27b');
+  await assert.rejects(new context.OpenAICompatibleTranslator({ provider: 'groq' }).translateBatch(['a'], 'zh-TW'), { code: 'config' });
+});

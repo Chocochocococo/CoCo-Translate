@@ -68,5 +68,14 @@
         ]
       }
     }
+  },
+  "commands": {
+    "toggle-page-translation": {
+      "suggested_key": {
+        "default": "Alt+Shift+Y",
+        "mac": "MacCtrl+Shift+Y"
+      },
+      "description": "Translate / restore this page"
+    }
   }
 }

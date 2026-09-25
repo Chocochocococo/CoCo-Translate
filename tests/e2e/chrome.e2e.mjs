@@ -288,6 +288,16 @@ try {
     assert.match(llmRequests.at(-1).messages[0].content, /English/);
   });
 
+  // 7-1. 快捷鍵
+  await check('快捷鍵：翻譯整頁 ⇄ 還原', async () => {
+    const toggle = () => sw.evaluate(async id => commandHandlers['toggle-page-translation'](await chrome.tabs.get(id)), tabId);
+    await page.bringToFront();
+    await toggle();
+    await page.waitForFunction(() => document.querySelector('#p2').textContent === '[譯]The quick brown fox', null, { timeout: 3000 });
+    await toggle();
+    await page.waitForFunction(() => document.querySelector('#p2').textContent === 'The quick brown fox', null, { timeout: 3000 });
+  });
+
   // 8. popup：AI 設定與模型清單
   const popup = await context.newPage();
   popup.on('pageerror', err => errors.push('popup pageerror: ' + err.message));
@@ -322,6 +332,9 @@ try {
     const options = await popup.$$eval('#pageApiSelect option', os => os.map(o => o.value));
     assert.ok(options.includes('llm'));
     assert.equal(await popup.inputValue('#triggerApiSelect'), 'llm');
+  });
+  await check('popup：顯示目前的快捷鍵', async () => {
+    assert.equal(await popup.textContent('#shortcutDisplay'), 'Alt+Shift+Y');
   });
   await check('popup：快取大小可以讀到', async () => {
     await popup.waitForFunction(() => /Cache Size: \d/.test(document.querySelector('#cacheSizeDisplay').textContent), null, { timeout: 3000 });

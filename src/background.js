@@ -187,17 +187,35 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 });
 
+// 整頁翻譯 ⇄ 還原（右鍵選單、快捷鍵共用）
+const togglePageTranslation = async (tab) => {
+  if (!tab || tab.id == null) return;
+  const isTranslated = await getPageStatus(tab.id);
+  sendToTab(tab.id, { type: isTranslated ? "RESTORE_PAGE" : "TRANSLATE_PAGE" });
+  await setPageStatus(tab.id, !isTranslated);
+  updateContextMenu(tab.id);
+};
+
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   if (info.menuItemId === "translate-selection" && info.selectionText) {
     sendToTab(tab.id, { type: "TRANSLATE_SELECTION", text: info.selectionText });
   } else if (info.menuItemId === "clear-all-translations") {
     broadcastToTabs({ type: "CLEAR_ALL_TRANSLATIONS" });
   } else if (info.menuItemId === "translate-page") {
-    const isTranslated = await getPageStatus(tab.id);
-    sendToTab(tab.id, { type: isTranslated ? "RESTORE_PAGE" : "TRANSLATE_PAGE" });
-    await setPageStatus(tab.id, !isTranslated);
-    updateContextMenu(tab.id);
+    togglePageTranslation(tab);
   }
+});
+
+// 快捷鍵：用瀏覽器內建的擴充功能快捷鍵，使用者可以在瀏覽器的快捷鍵設定頁自訂或清空停用
+const commandHandlers = {
+  'toggle-page-translation': togglePageTranslation
+};
+
+chrome.commands?.onCommand.addListener(async (command, tab) => {
+  const handler = commandHandlers[command];
+  if (!handler) return;
+  const target = tab || (await queryTabs({ active: true, lastFocusedWindow: true }))[0];
+  handler(target);
 });
 
 chrome.tabs.onActivated.addListener((activeInfo) => {

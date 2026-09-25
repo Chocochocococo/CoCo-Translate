@@ -811,6 +811,33 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   });
 
+  // 快捷鍵（瀏覽器內建的擴充功能快捷鍵：可以自訂，也可以清空停用）
+  const shortcutDisplay = document.getElementById('shortcutDisplay');
+  const refreshShortcut = () => {
+    if (!chrome.commands?.getAll) return;
+    chrome.commands.getAll(commands => {
+      const command = (commands || []).find(c => c.name === 'toggle-page-translation');
+      shortcutDisplay.textContent = command?.shortcut || (uiLang() === 'zh' ? '未設定' : 'Not set');
+    });
+  };
+  refreshShortcut();
+  document.getElementById('languageSelector').addEventListener('change', refreshShortcut);
+
+  document.getElementById('openShortcutSettingsBtn').addEventListener('click', () => {
+    // Firefox 137 以後有現成的 API 可以直接打開快捷鍵設定
+    if (chrome.commands?.openShortcutSettings) {
+      chrome.commands.openShortcutSettings();
+      return;
+    }
+    if (navigator.userAgent.includes('Firefox')) {
+      showCustomWarning(uiLang() === 'zh'
+        ? '請到「附加元件管理員」→ 右上角齒輪 →「管理擴充套件快捷鍵」設定。'
+        : 'Open Add-ons Manager → gear menu → "Manage Extension Shortcuts".');
+      return;
+    }
+    chrome.tabs.create({ url: 'chrome://extensions/shortcuts' });
+  });
+
   //快取（快取在 background，整個擴充功能共用一份）
   const cacheSizeDisplay = document.getElementById('cacheSizeDisplay');
   const refreshCacheSize = () => {

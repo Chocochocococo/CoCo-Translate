@@ -35,6 +35,8 @@ const i18nStrings = {
       deepLAccountTypelabelID: "DeepL Account Type:",
       useDiskCacheLabelID: "Enable local cached translation",
       clearCacheBtnID: "Clear Cache",
+      shortcutLabelID: "Shortcut:",
+      openShortcutSettingsBtnID: "Set Shortcuts",
       Importrexgexpatterns: "Import Regex Patterns",
       Importrexgexpatternsdes: "Select your custom Regular Expression JSON file and load it into the extension. Importing will overwrite the existing patterns.",
       importBtnid: "Import Regex File",
@@ -88,6 +90,8 @@ const i18nStrings = {
       deepLAccountTypelabelID: "DeepL帳戶類型：",
       useDiskCacheLabelID: "啟用本地快取譯文",
       clearCacheBtnID: "清除快取",
+      shortcutLabelID: "快捷鍵：",
+      openShortcutSettingsBtnID: "設定快捷鍵",
       Importrexgexpatterns: "匯入正規表達式",
       Importrexgexpatternsdes: "選擇你的自訂正規表達式 JSON 檔案，並加載到擴充功能中。匯入後會覆蓋現有的正規表達式。",
       importBtnid: "匯入檔案",
@@ -118,6 +122,8 @@ const i18nStrings = {
     setText("openApiModalBtn", dict.openApiModalBtnID);
     setText("useDiskCacheLabel", dict.useDiskCacheLabelID);
     setText("clearCacheBtn", dict.clearCacheBtnID);
+    setText("shortcutLabel", dict.shortcutLabelID);
+    setText("openShortcutSettingsBtn", dict.openShortcutSettingsBtnID);
 
     // Options 頁（匯入正規表達式）
     setText("Importrexgexpatternsid", dict.Importrexgexpatterns);

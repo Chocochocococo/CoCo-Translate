@@ -24,11 +24,16 @@ const EXT_DIR = path.join(ROOT, 'dist', 'chrome');
 // <html translate="no">：很多網站這樣寫只是為了擋 Chrome 內建翻譯，CoCo 還是要照翻
 const PAGE = `<!doctype html><html translate="no"><head><style>p { color: black; }</style></head><body>
   <p id="p1">Hello <b>brave</b> world</p>
+  <p id="order">He said <b id="bold">hello</b> to <i id="italic">her</i>.</p>
+  <p id="broken">Click <a href="#top" id="link">here</a> now</p>
+  <div id="novel">First line of the chapter<br>Second line of the chapter</div>
   <p id="p2">The quick brown fox</p>
   <p id="num">42</p>
   <p id="code">Run <code>npm test</code> now</p>
   <p id="notranslate" class="notranslate">Marked as notranslate</p>
-  <pre><code id="block">Print the greeting</code></pre>
+  <pre id="block"><code>Print the greeting</code></pre>
+  <pre id="poem">Roses are red
+Violets are blue</pre>
   <div id="editor" contenteditable="true"><p>Write your story here</p></div>
   <input id="field" placeholder="Search here">
 </body></html>`;
@@ -52,9 +57,15 @@ const llmServer = http.createServer((req, res) => {
     }
     const user = payload.messages[1].content;
     let content;
+    // 模擬真實翻譯服務：中文語序會讓標籤換位置；偶爾也會把標籤弄丟
+    const translateSegment = s => {
+      if (s.startsWith('He said <b id="g0">')) return '他對<i id="g1">她</i>說<b id="g0">你好</b>。';
+      if (s.includes('<a id="g0">')) return '[譯]Click here now';
+      return `[譯]${s}`;
+    };
     if (payload.response_format) {
       const { segments } = JSON.parse(user);
-      content = JSON.stringify({ segments: segments.map(s => `[譯]${s}`) });
+      content = JSON.stringify({ segments: segments.map(translateSegment) });
     } else {
       content = `[譯]${user.split('\n').slice(1).join('\n')}`;
     }
@@ -110,15 +121,36 @@ try {
   await page.waitForFunction(() => document.querySelector('#p2').textContent.startsWith('[譯]'), null, { timeout: 5000 });
   await page.waitForTimeout(300);
 
-  await check('整頁翻譯：保留行內元素之間的空白', async () => {
-    assert.equal(await page.textContent('#p1'), '[譯]Hello [譯]brave [譯]world');
+  await check('段落翻譯：整段一起翻，行內樣式和空白都保留', async () => {
+    assert.equal(await page.textContent('#p1'), '[譯]Hello brave world');
+    assert.equal(await page.textContent('#p1 b'), 'brave');
+  });
+  await check('段落翻譯：標籤跟著中文語序換位置，而且是原本的元素', async () => {
+    assert.equal(await page.textContent('#order'), '他對她說你好。');
+    assert.equal(await page.textContent('#italic'), '她');
+    assert.equal(await page.textContent('#bold'), '你好');
+    const order = await page.$$eval('#order > *', els => els.map(el => el.id));
+    assert.deepEqual(order, ['italic', 'bold']);
+  });
+  await check('段落翻譯：標籤對不回去就退回逐片段翻，連結還在', async () => {
+    assert.equal(await page.textContent('#broken'), '[譯]Click [譯]here [譯]now');
+    assert.equal(await page.getAttribute('#link', 'href'), '#top');
+  });
+  await check('段落翻譯：<br> 隔開的每一行各自是一段', async () => {
+    assert.equal(await page.textContent('#novel'), '[譯]First line of the chapter[譯]Second line of the chapter');
+    assert.equal(await page.locator('#novel br').count(), 1);
+  });
+  await check('段落翻譯：<pre> 的換行保留', async () => {
+    assert.equal(await page.textContent('#poem'), '[譯]Roses are red\nViolets are blue');
   });
   await check('整頁翻譯：<html translate="no"> 和 .notranslate 照翻', async () => {
     assert.equal(await page.textContent('#notranslate'), '[譯]Marked as notranslate');
   });
   await check('整頁翻譯：程式碼區塊照翻', async () => {
-    assert.equal(await page.textContent('#code'), '[譯]Run [譯]npm test [譯]now');
+    assert.equal(await page.textContent('#code'), '[譯]Run npm test now');
+    // 假伺服器把 [譯] 加在整段最前面（<code> 外面），所以看整個 <pre>
     assert.equal(await page.textContent('#block'), '[譯]Print the greeting');
+    assert.equal(await page.textContent('#block code'), 'Print the greeting');
   });
   await check('整頁翻譯：編輯器裡的預設文字照翻', async () => {
     assert.equal(await page.textContent('#editor'), '[譯]Write your story here');
@@ -132,9 +164,10 @@ try {
   await check('整頁翻譯：屬性也有翻', async () => {
     assert.equal(await page.getAttribute('#field', 'placeholder'), '[譯]Search here');
   });
-  await check('整頁翻譯：所有段落只用一次 AI 請求', async () => {
-    assert.equal(llmRequests.length, 1, `實際請求數 ${llmRequests.length}`);
-    assert.ok(llmRequests[0].response_format, '應該用 JSON 分段模式');
+  await check('整頁翻譯：所有段落只用一次 AI 請求（整段模式）', async () => {
+    const markupRequests = llmRequests.filter(r => r.messages[0].content.includes('inline HTML tags'));
+    assert.equal(markupRequests.length, 1, `整段模式的請求數 ${markupRequests.length}`);
+    assert.ok(markupRequests[0].response_format, '應該用 JSON 分段模式');
   });
 
   // 2. 動態新增的內容
@@ -176,6 +209,10 @@ try {
   const tabId = await sw.evaluate(async o => (await chrome.tabs.query({ url: o + '/*' }))[0].id, origin);
   await sw.evaluate(id => chrome.tabs.sendMessage(id, { type: 'RESTORE_PAGE' }), tabId);
   await page.waitForTimeout(300);
+  await check('還原：節點數量跟原本一樣（沒有殘留新增的文字節點）', async () => {
+    assert.equal(await page.evaluate(() => document.querySelector('#order').childNodes.length), 5);
+    assert.deepEqual(await page.$$eval('#order > *', els => els.map(el => el.id)), ['bold', 'italic']);
+  });
   await check('還原：文字與空白完全回到原樣', async () => {
     const body = await page.evaluate(() => {
       document.querySelector('#dynamic')?.remove();

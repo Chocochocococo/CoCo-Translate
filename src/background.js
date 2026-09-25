@@ -2,6 +2,7 @@
 // Firefox 的 manifest 會先載入下面這些檔案；Chrome 的 service worker 要自己 importScripts
 const BACKGROUND_LIBS = [
   'translationCache.js',
+  'markup.js',
   'postprocess.js',
   'rateLimiter.js',
   'translator.js',

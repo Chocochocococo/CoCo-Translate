@@ -73,11 +73,18 @@ const PostProcess = (() => {
    * 對一批原始譯文做後處理
    * @param {string[]} texts
    * @param {string} targetLang
+   * @param {{html?: boolean}} [options] html：段落格式（含行內標籤），只處理文字部分
    * @returns {Promise<string[]>}
    */
-  const apply = async (texts, targetLang) => {
+  const apply = async (texts, targetLang, { html = false } = {}) => {
     const compiled = await getRegexConfig();
-    return texts.map(text => convertQuotes(applyRegexPatterns(text, compiled), targetLang));
+    const process = text => convertQuotes(applyRegexPatterns(text, compiled), targetLang);
+    if (!html) return texts.map(process);
+    return texts.map(text => {
+      const protectedText = Markup.protect(text);
+      protectedText.text = process(protectedText.text);
+      return Markup.restore(protectedText);
+    });
   };
 
   return { apply, convertQuotes, cleanLLMOutput, decodeHtmlEntities, escapeHtml, applyRegexPatterns };

@@ -151,9 +151,17 @@ class OpenAICompatibleTranslator {
     return content;
   }
 
-  async translateOne(text, targetLang) {
+  markupInstructions(html) {
+    return html
+      ? ` The text contains inline HTML tags with id attributes (for example <b id="g0">…</b> or <img id="x1">). ` +
+        `Keep every tag with its id exactly once, keep the nesting, and move each tag so it wraps the matching translated words. ` +
+        `Do not add, remove or rename tags.`
+      : '';
+  }
+
+  async translateOne(text, targetLang, { html = false } = {}) {
     const fullTargetLang = getLanguageFullName(targetLang);
-    const systemPrompt = `${this.buildBasePrompt(targetLang)} Only return the translation, nothing else. Do not use any Markdown formatting.`;
+    const systemPrompt = `${this.buildBasePrompt(targetLang)}${this.markupInstructions(html)} Only return the translation, nothing else. Do not use any Markdown formatting.`;
     const content = await this.chat([
       { role: 'system', content: systemPrompt },
       { role: 'user', content: `Translate the following into ${fullTargetLang}:\n${text}` }
@@ -161,10 +169,10 @@ class OpenAICompatibleTranslator {
     return PostProcess.cleanLLMOutput(content);
   }
 
-  async translateSegments(texts, targetLang) {
+  async translateSegments(texts, targetLang, { html = false } = {}) {
     const fullTargetLang = getLanguageFullName(targetLang);
     const systemPrompt =
-      `${this.buildBasePrompt(targetLang)}\n\n` +
+      `${this.buildBasePrompt(targetLang)}${this.markupInstructions(html)}\n\n` +
       `You will receive a JSON object {"segments": [...]}. The segments are consecutive fragments of the same web page. ` +
       `Translate every segment into ${fullTargetLang}. ` +
       `Respond with only a JSON object {"segments": [...]} containing exactly ${texts.length} strings in the same order. ` +
@@ -177,11 +185,11 @@ class OpenAICompatibleTranslator {
     return parseSegmentsResponse(content, texts.length);
   }
 
-  async translateBatch(texts, targetLang = 'zh-TW') {
+  async translateBatch(texts, targetLang = 'zh-TW', sourceLang = 'auto', options = {}) {
     this.checkConfig();
-    if (texts.length === 1) return [await this.translateOne(texts[0], targetLang)];
+    if (texts.length === 1) return [await this.translateOne(texts[0], targetLang, options)];
 
-    const segments = await this.translateSegments(texts, targetLang);
+    const segments = await this.translateSegments(texts, targetLang, options);
     if (segments) return segments.map(s => PostProcess.cleanLLMOutput(s));
 
     // 模型漏段或格式亂掉：對半切再試，切到很小還是不行就一段一段翻
@@ -189,13 +197,13 @@ class OpenAICompatibleTranslator {
     if (texts.length > 4) {
       const mid = Math.ceil(texts.length / 2);
       const [first, second] = await Promise.all([
-        this.translateBatch(texts.slice(0, mid), targetLang),
-        this.translateBatch(texts.slice(mid), targetLang)
+        this.translateBatch(texts.slice(0, mid), targetLang, sourceLang, options),
+        this.translateBatch(texts.slice(mid), targetLang, sourceLang, options)
       ]);
       return first.concat(second);
     }
     const results = [];
-    for (const text of texts) results.push(await this.translateOne(text, targetLang));
+    for (const text of texts) results.push(await this.translateOne(text, targetLang, options));
     return results;
   }
 

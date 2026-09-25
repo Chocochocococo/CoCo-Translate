@@ -119,10 +119,12 @@ class GoogleTranslator {
     this.queue = new RequestQueue({ concurrency: 4 });
   }
 
-  async translateBatch(texts, targetLang = 'zh-TW', sourceLang = 'auto') {
+  async translateBatch(texts, targetLang = 'zh-TW', sourceLang = 'auto', { html = false } = {}) {
     await GoogleHelper_v2.findAuth();
-    // translateHtml 會把輸入當 HTML，先跳脫、回來再解碼，不然 "a < b" 會變成 "a &lt; b"
-    const requestBody = JSON.stringify([[texts.map(PostProcess.escapeHtml), sourceLang, targetLang], "te"]);
+    // translateHtml 會把輸入當 HTML：純文字先跳脫、回來再解碼，不然 "a < b" 會變成 "a &lt; b"
+    // 換行也會被當空白吃掉，先換成 <br>
+    const prepare = text => Markup.newlinesToBr(html ? text : PostProcess.escapeHtml(text));
+    const requestBody = JSON.stringify([[texts.map(prepare), sourceLang, targetLang], "te"]);
 
     const response = await this.queue.run(() => safeFetch(this.baseUrl, {
       method: 'POST',
@@ -138,7 +140,10 @@ class GoogleTranslator {
     if (!Array.isArray(data?.[0]) || data[0].length !== texts.length) {
       throw new TranslationError('bad_response', 'Google Translate: unexpected response');
     }
-    return data[0].map(text => PostProcess.decodeHtmlEntities(text ?? ''));
+    return data[0].map(text => {
+      const restored = Markup.brToNewlines(text ?? '');
+      return html ? restored : PostProcess.decodeHtmlEntities(restored);
+    });
   }
 }
 
@@ -153,9 +158,11 @@ class GoogleApiKeyTranslator {
     this.queue = new RequestQueue({ concurrency: 4 });
   }
 
-  async translateBatch(texts, targetLang = 'zh-TW', sourceLang = 'auto') {
+  async translateBatch(texts, targetLang = 'zh-TW', sourceLang = 'auto', { html = false } = {}) {
     if (!this.apiKey) throw new TranslationError('config', 'Please enter the Cloud API key!');
-    const body = { q: texts, target: targetLang, format: "text" };
+    const body = html
+      ? { q: texts.map(Markup.newlinesToBr), target: targetLang, format: "html" }
+      : { q: texts, target: targetLang, format: "text" };
     if (sourceLang !== 'auto') body.source = sourceLang;
 
     const response = await this.queue.run(() => safeFetch(`${this.baseUrl}?key=${encodeURIComponent(this.apiKey)}`, {
@@ -170,7 +177,7 @@ class GoogleApiKeyTranslator {
     if (!Array.isArray(translations) || translations.length !== texts.length) {
       throw new TranslationError('bad_response', 'Invalid Cloud Translation response, fuck!');
     }
-    return translations.map(t => t.translatedText ?? '');
+    return translations.map(t => (html ? Markup.brToNewlines(t.translatedText ?? '') : t.translatedText ?? ''));
   }
 }
 
@@ -206,11 +213,12 @@ class BingTranslator {
     this.queue = new RequestQueue({ concurrency: 4 });
   }
 
-  async translateBatch(texts, targetLang = 'zh-TW', sourceLang = 'auto') {
+  async translateBatch(texts, targetLang = 'zh-TW', sourceLang = 'auto', { html = false } = {}) {
     const to = BING_LANG_MAP[targetLang.toLowerCase()] || targetLang;
     let url = `${this.baseUrl}&to=${encodeURIComponent(to)}`;
     if (sourceLang !== 'auto') url += `&from=${encodeURIComponent(BING_LANG_MAP[sourceLang.toLowerCase()] || sourceLang)}`;
-    const body = JSON.stringify(texts.map(text => ({ Text: text })));
+    if (html) url += '&textType=html';
+    const body = JSON.stringify(texts.map(text => ({ Text: html ? Markup.newlinesToBr(text) : text })));
 
     const send = token => this.queue.run(() => safeFetch(url, {
       method: 'POST',
@@ -228,7 +236,10 @@ class BingTranslator {
     if (!Array.isArray(data) || data.length !== texts.length) {
       throw new TranslationError('bad_response', 'Invalid Bing translation response');
     }
-    return data.map(item => item?.translations?.[0]?.text ?? '');
+    return data.map(item => {
+      const text = item?.translations?.[0]?.text ?? '';
+      return html ? Markup.brToNewlines(text) : text;
+    });
   }
 }
 
@@ -248,12 +259,13 @@ class DeepLTranslator {
     this.queue = new RequestQueue({ concurrency: 2 });
   }
 
-  async translateBatch(texts, targetLang = 'zh-TW', sourceLang = 'auto') {
+  async translateBatch(texts, targetLang = 'zh-TW', sourceLang = 'auto', { html = false } = {}) {
     if (!this.apiKey) throw new TranslationError('config', 'Please enter the DeepL API key!');
     const body = {
-      text: texts,
+      text: html ? texts.map(Markup.newlinesToBr) : texts,
       target_lang: DEEPL_TARGET_MAP[targetLang.toLowerCase()] || targetLang.toUpperCase()
     };
+    if (html) body.tag_handling = 'html';
     if (sourceLang !== 'auto') body.source_lang = sourceLang.split('-')[0].toUpperCase();
 
     const response = await this.queue.run(() => safeFetch(this.baseUrl, {
@@ -270,7 +282,7 @@ class DeepLTranslator {
     if (!Array.isArray(data?.translations) || data.translations.length !== texts.length) {
       throw new TranslationError('bad_response', 'Invalid DeepL translation response, fuck!');
     }
-    return data.translations.map(t => t.text ?? '');
+    return data.translations.map(t => (html ? Markup.brToNewlines(t.text ?? '') : t.text ?? ''));
   }
 }
 

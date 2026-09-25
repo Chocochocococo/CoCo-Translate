@@ -134,13 +134,17 @@ const TranslationService = (() => {
    * @param {string[]} request.texts 已 trim 過的文字
    * @param {string} request.targetLang
    * @param {string} [request.sourceLang]
+   * @param {'text'|'html'} [request.format] html：整段連同行內標籤一起翻（見 markup.js）
    * @returns {Promise<{translations: string[], error: Object|null}>}
    */
-  const translate = async ({ role = 'trigger', texts = [], targetLang = 'zh-TW', sourceLang = 'auto' }) => {
+  const translate = async ({ role = 'trigger', texts = [], targetLang = 'zh-TW', sourceLang = 'auto', format = 'text' }) => {
     const settings = await getSettings();
     const source = resolveSource(settings, role);
     const provider = getProvider(source, settings);
-    const cacheId = providerCacheId(source, provider);
+    const html = format === 'html';
+    // 同一段文字，純文字跟段落格式的譯文不一樣（跳脫字元、標籤），快取要分開
+    const cacheId = `${providerCacheId(source, provider)}${html ? '|html' : ''}`;
+    const diskKey = text => (html ? `[html]${text}` : text);
     const useDiskCache = !!settings.useDiskCache;
 
     const raw = new Array(texts.length);
@@ -148,7 +152,7 @@ const TranslationService = (() => {
     const missing = new Map();   // text -> 需要這段譯文的 index 們
 
     texts.forEach((text, i) => {
-      if (!text || !needsTranslation(text)) {
+      if (!text || !needsTranslation(html ? Markup.stripTags(text) : text)) {
         raw[i] = text;
         return;
       }
@@ -174,7 +178,7 @@ const TranslationService = (() => {
     if (useDiskCache && missing.size) {
       await Promise.all([...missing.keys()].map(async text => {
         try {
-          const cached = await TranslationCache.getTranslation(text, targetLang);
+          const cached = await TranslationCache.getTranslation(diskKey(text), targetLang);
           if (cached) fill(text, cached);
         } catch (e) {
           console.error('Fuck, 讀本地快取失敗:', e);
@@ -188,13 +192,13 @@ const TranslationService = (() => {
 
     await Promise.all(chunks.map(async chunk => {
       try {
-        const results = await provider.translateBatch(chunk, targetLang, sourceLang);
+        const results = await provider.translateBatch(chunk, targetLang, sourceLang, { html });
         chunk.forEach((text, i) => {
           const result = results[i];
           if (typeof result !== 'string' || !result) return;
           fill(text, result);
           if (useDiskCache) {
-            TranslationCache.setTranslation(text, result, targetLang, "und")
+            TranslationCache.setTranslation(diskKey(text), result, targetLang, "und")
               .catch(e => console.error('Fuck, 寫本地快取失敗:', e));
           }
         });
@@ -210,7 +214,7 @@ const TranslationService = (() => {
     });
 
     const processedIndexes = raw.map((_, i) => i).filter(i => translated[i]);
-    const processed = await PostProcess.apply(processedIndexes.map(i => raw[i]), targetLang);
+    const processed = await PostProcess.apply(processedIndexes.map(i => raw[i]), targetLang, { html });
     const translations = [...raw];
     processedIndexes.forEach((index, k) => {
       translations[index] = processed[k];

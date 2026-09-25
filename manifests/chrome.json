@@ -25,7 +25,7 @@
         "*://*.recaptcha.net/*",
         "*://www.google.com/recaptcha/*"
       ],
-      "js": ["content.js"],
+      "js": ["markup.js", "content.js"],
       "run_at": "document_end",
       "all_frames": false
     }

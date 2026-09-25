@@ -22,6 +22,7 @@
   "background": {
     "scripts": [
       "translationCache.js",
+      "markup.js",
       "postprocess.js",
       "rateLimiter.js",
       "translator.js",
@@ -43,6 +44,7 @@
         "*://www.google.com/recaptcha/*"
       ],
       "js": [
+        "markup.js",
         "content.js"
       ],
       "run_at": "document_end",

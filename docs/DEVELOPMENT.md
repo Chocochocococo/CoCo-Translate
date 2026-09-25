@@ -8,6 +8,7 @@ src/                    Chrome 與 Firefox 共用的原始碼
   translationService.js 翻譯總機：選來源、快取、切批次、錯誤處理
   translator.js         Google / Cloud Translation / Bing / DeepL
   llm.js                AI 翻譯（OpenAI 相容：Ollama Cloud / OpenRouter / Mistral / 本機 Ollama / 自訂）
+  markup.js             段落翻譯的行內標記：解析、結構檢查、後處理時保護標籤（前後端共用）
   postprocess.js        自訂正規表達式、引號轉「」、清理 LLM 輸出
   rateLimiter.js        每個翻譯來源的請求佇列（同時請求數、每分鐘請求數）
   translationCache.js   本地快取（IndexedDB，整個擴充功能共用一份）
@@ -60,14 +61,17 @@ npm run build:chrome && node tests/e2e/chrome.e2e.mjs   # 端對端測試，需�
 
 ```
 content.js ──TRANSLATE_BATCH──▶ background.js ─▶ TranslationService
-   (收集文字、保留空白)                           ├─ 記憶體快取 / 本地快取
+   (找出段落、行內元素換成                        ├─ 記憶體快取 / 本地快取
+    <b id="g0">…</b> 送出)
                                                   ├─ 切成適合該來源的批次
                                                   ├─ Provider.translateBatch()（經過 RequestQueue 限流）
                                                   └─ PostProcess（正規表達式、引號）
 content.js ◀── { translations, error } ──────────┘
 ```
 
-新增翻譯來源：在 `translator.js` 或 `llm.js` 實作一個有 `label`、`maxBatchItems`、`maxBatchChars`、`translateBatch(texts, targetLang, sourceLang)` 的類別，失敗時丟 `TranslationError`，再到 `translationService.js` 的 `createProvider` 加一個 case。
+content.js 收到譯文後用 `Markup.parse` 解析、`Markup.matchesStructure` 檢查 id 與父子關係，通過才套回原本的節點（`applyUnit`），否則退回逐片段翻（`format: 'text'`）。
+
+新增翻譯來源：在 `translator.js` 或 `llm.js` 實作一個有 `label`、`maxBatchItems`、`maxBatchChars`、`translateBatch(texts, targetLang, sourceLang, { html })` 的類別（`html: true` 時要保留帶 id 的行內標籤），失敗時丟 `TranslationError`，再到 `translationService.js` 的 `createProvider` 加一個 case。
 
 ## 本機 Ollama
 

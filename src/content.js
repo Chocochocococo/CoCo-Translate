@@ -145,7 +145,7 @@ const showTranslationError = error => {
  * 把一批文字丟給 background 翻譯
  * @returns {Promise<{translations: string[], error: Object|null}>}
  */
-const requestTranslations = (role, texts, targetLang = targetLanguage) => new Promise(resolve => {
+const requestTranslations = (role, texts, targetLang = targetLanguage, format = 'text') => new Promise(resolve => {
   if (!texts.length) return resolve({ translations: [], error: null });
   const fail = message => {
     const error = { code: 'network', message, provider: '' };
@@ -153,7 +153,7 @@ const requestTranslations = (role, texts, targetLang = targetLanguage) => new Pr
     resolve({ translations: texts, error });
   };
   try {
-    chrome.runtime.sendMessage({ type: 'TRANSLATE_BATCH', role, texts, targetLang }, response => {
+    chrome.runtime.sendMessage({ type: 'TRANSLATE_BATCH', role, texts, targetLang, format }, response => {
       if (chrome.runtime.lastError || !response) {
         console.error('Fuck, 翻譯請求失敗:', chrome.runtime.lastError);
         return fail(chrome.runtime.lastError?.message || 'No response from background');
@@ -175,7 +175,7 @@ const PAGE_BATCH_CONCURRENCY = 3;
  * jobs: [{ text, apply(translated) }]
  * 分批送出，每批翻完先套用，畫面才不用等全部翻完才動
  */
-async function translateJobs(role, jobs, targetLang = targetLanguage) {
+async function translateJobs(role, jobs, targetLang = targetLanguage, format = 'text') {
   const batches = [];
   let current = [];
   let chars = 0;
@@ -194,8 +194,10 @@ async function translateJobs(role, jobs, targetLang = targetLanguage) {
   const worker = async () => {
     while (next < batches.length) {
       const batch = batches[next++];
-      const { translations } = await requestTranslations(role, batch.map(job => job.text), targetLang);
+      const { translations, error } = await requestTranslations(role, batch.map(job => job.text), targetLang, format);
       batch.forEach((job, i) => {
+        // 翻譯失敗、原文奉還的就別套了（錯誤提示已經跳出來）
+        if (error && translations[i] === job.text) return;
         try {
           job.apply(translations[i]);
         } catch (e) {
@@ -315,6 +317,269 @@ function collectPageTextJobs(root, { fromMutation = false } = {}) {
   return jobs;
 }
 
+// ---------------- 段落翻譯：整段連同行內樣式一起送 ----------------
+// 一段文字（段落、標題、列表項、<br> 隔開的一行……）裡的行內元素，會換成帶 id 的標籤一起送出：
+//   He said <b id="g0">hello</b> to <i id="g1">her</i>.
+// 翻譯服務照目標語言的語序擺好標籤後，再把譯文套回「原本的」元素。
+// 只重複使用原節點、只在同一層裡調整順序，不刪除也不跨層移動，React 之類的網站才不會壞掉。
+// 標籤對不回去就退回舊的「一個樣式一個片段」。
+
+// 行內元素：跟著整段一起翻
+const INLINE_TAGS = new Set([
+  'a', 'abbr', 'acronym', 'b', 'bdi', 'bdo', 'big', 'button', 'cite', 'code', 'data', 'del', 'dfn', 'em', 'font',
+  'i', 'ins', 'kbd', 'label', 'mark', 'nobr', 'q', 'rb', 'rp', 'rt', 'ruby', 's', 'samp', 'small', 'span',
+  'strike', 'strong', 'sub', 'sup', 'time', 'tt', 'u', 'var'
+]);
+// 送給翻譯服務時保留原本的標籤名稱（給翻譯服務一點提示），其他一律用 span
+// code / kbd / samp 不能照原名送：Google 會把裡面的字當程式碼不翻
+const MARKUP_TAG_NAMES = new Set([
+  'a', 'abbr', 'b', 'cite', 'del', 'em', 'i', 'ins', 'mark', 'q', 's', 'small', 'span',
+  'strong', 'sub', 'sup', 'u'
+]);
+// 段落裡原封不動的東西（圖片、表單元件、程式……），送出時變成 <img id="xN">
+const ATOMIC_TAGS = new Set([
+  'img', 'input', 'svg', 'video', 'audio', 'canvas', 'iframe', 'object', 'embed', 'math', 'picture', 'wbr',
+  'script', 'style', 'noscript', 'template', 'textarea'
+]);
+// 行內元素裡包了這些，就不能當成行內元素處理
+const BLOCK_SELECTOR = 'address, article, aside, blockquote, details, dialog, dd, div, dl, dt, fieldset, figcaption, ' +
+  'figure, footer, form, h1, h2, h3, h4, h5, h6, header, hgroup, hr, li, main, nav, ol, p, pre, section, table, ul, select, br';
+// 太長的一段就不整段送了（通常是沒有分段的怪網頁），直接用舊方式
+const MAX_UNIT_CHARS = 3000;
+
+let translatedUnits = [];   // 整頁翻譯時套用過的段落，還原用
+
+const isPreformatted = element => {
+  if (element.closest('pre')) return true;
+  if (!element.isConnected) return false;
+  return /^pre/.test(getComputedStyle(element).whiteSpace || '');
+};
+
+function buildUnit(parent, nodes) {
+  const preserveWhitespace = isPreformatted(parent);
+  const elements = new Map();       // id → { el, atomic }
+  const expectedParents = {};       // id → 父元素 id（最外層為 null）
+  const textNodes = [];
+
+  const serialize = (node, parentId) => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      textNodes.push(node);
+      const text = preserveWhitespace ? node.textContent : node.textContent.replace(/\s+/g, ' ');
+      return Markup.escapeText(text);
+    }
+    if (node.nodeType !== Node.ELEMENT_NODE) return '';
+    const atomic = ATOMIC_TAGS.has(node.localName) || node.matches(SKIP_SELECTOR);
+    const id = `${atomic ? 'x' : 'g'}${elements.size}`;
+    elements.set(id, { el: node, atomic });
+    expectedParents[id] = parentId;
+    if (atomic) return `<img id="${id}">`;
+    const tag = MARKUP_TAG_NAMES.has(node.localName) ? node.localName : 'span';
+    const inner = [...node.childNodes].map(child => serialize(child, id)).join('');
+    return `<${tag} id="${id}">${inner}</${tag}>`;
+  };
+
+  const html = nodes.map(node => serialize(node, null)).join('');
+  const core = html.trim();
+  if (!core || core.length > MAX_UNIT_CHARS) return null;
+  return {
+    parent,
+    nodes,
+    elements,
+    expectedParents,
+    textNodes,
+    meaningfulTextNodes: textNodes.filter(n => /\p{L}/u.test(n.textContent)),
+    originalTexts: new Map(textNodes.map(n => [n, n.textContent])),
+    html: core,
+    lead: html.match(/^\s*/)[0],
+    trail: html.slice(core.length + html.match(/^\s*/)[0].length)
+  };
+}
+
+/**
+ * 找出 root 底下所有要翻的段落
+ * @returns {{ units: Object[], fragmentNodes: Text[] }} fragmentNodes：只能用舊方式逐片段翻的文字節點
+ */
+function collectUnits(root, { fromMutation = false } = {}) {
+  const units = [];
+  const fragmentNodes = [];
+  if (!root || root.nodeType !== Node.ELEMENT_NODE) return { units, fragmentNodes };
+  if (root.matches(SKIP_SELECTOR) || ATOMIC_TAGS.has(root.localName)) return { units, fragmentNodes };
+
+  const handleRun = (parent, run) => {
+    // 頭尾的空白文字節點不算進這一段
+    while (run.length && run[0].nodeType === Node.TEXT_NODE && !run[0].textContent.trim()) run.shift();
+    while (run.length && run[run.length - 1].nodeType === Node.TEXT_NODE && !run[run.length - 1].textContent.trim()) run.pop();
+    if (!run.length) return;
+
+    const textNodes = [];
+    for (const node of run) {
+      if (node.nodeType === Node.TEXT_NODE) {
+        textNodes.push(node);
+      } else if (!ATOMIC_TAGS.has(node.localName)) {
+        const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT, null);
+        while (walker.nextNode()) {
+          if (!SKIP_TAGS.has(walker.currentNode.parentElement?.tagName)) textNodes.push(walker.currentNode);
+        }
+      }
+    }
+    const meaningful = textNodes.filter(n => /\p{L}/u.test(n.textContent));
+    if (!meaningful.length || shouldSkipTextNode(meaningful[0], fromMutation)) return;
+
+    // 已經翻過的段落就跳過；翻過之後網頁又改了其中幾個字，就只用舊方式翻改掉的部分
+    const fresh = meaningful.filter(n => translatedTextMap.get(n) !== n.textContent);
+    if (!fresh.length) return;
+    if (fresh.length !== meaningful.length) {
+      fragmentNodes.push(...fresh);
+      return;
+    }
+    const unit = buildUnit(parent, run);
+    if (unit) units.push(unit);
+    else fragmentNodes.push(...fresh);
+  };
+
+  const walk = container => {
+    let run = [];
+    const flush = () => {
+      handleRun(container, run);
+      run = [];
+    };
+    for (const child of [...container.childNodes]) {
+      if (child.nodeType === Node.TEXT_NODE) {
+        run.push(child);
+        continue;
+      }
+      if (child.nodeType !== Node.ELEMENT_NODE) continue;
+      const name = child.localName;
+      if (child.matches(SKIP_SELECTOR) || SKIP_TAGS.has(child.tagName) || name === 'br') {
+        flush();
+        continue;
+      }
+      if (ATOMIC_TAGS.has(name) || (INLINE_TAGS.has(name) && !child.querySelector(BLOCK_SELECTOR))) {
+        run.push(child);
+        continue;
+      }
+      flush();
+      walk(child);
+    }
+    flush();
+  };
+
+  walk(root);
+  return { units, fragmentNodes };
+}
+
+/**
+ * 把翻好的標記套回原本的節點
+ * @param {boolean} live true：正在整頁翻譯的網頁（要檢查有沒有被改掉、要記錄還原資訊）
+ * @returns {'applied'|'invalid'|'stale'} invalid：標籤對不回去，要退回舊方式
+ */
+function applyUnit(unit, translated, { live }) {
+  const tree = Markup.parse(translated);
+  if (!Markup.matchesStructure(tree, unit.expectedParents)) return 'invalid';
+
+  if (live) {
+    // 翻譯途中被還原、或網頁自己改掉了，就別蓋上去
+    if (!isPageTranslationMode) return 'stale';
+    if (unit.textNodes.some(n => n.textContent !== unit.originalTexts.get(n))) return 'stale';
+    if (unit.nodes.some(n => n.parentNode !== unit.parent)) return 'stale';
+  }
+
+  // 補回段落前後原本的空白
+  const rootItems = tree.children;
+  if (unit.lead) {
+    if (rootItems[0]?.type === 'text') rootItems[0].text = unit.lead + rootItems[0].text;
+    else rootItems.unshift({ type: 'text', text: unit.lead });
+  }
+  if (unit.trail) {
+    const last = rootItems[rootItems.length - 1];
+    if (last?.type === 'text') last.text += unit.trail;
+    else rootItems.push({ type: 'text', text: unit.trail });
+  }
+
+  const snapshot = {
+    parent: unit.parent,
+    rootNodes: [...unit.nodes],
+    anchor: unit.nodes[unit.nodes.length - 1].nextSibling,
+    containers: [],
+    texts: new Map(unit.originalTexts),
+    created: []
+  };
+
+  // 依譯文順序擺放：文字優先重複使用原本的文字節點，不夠才新增；用不到的清空但不刪除
+  const place = (container, items, pool, anchor) => {
+    const sequence = [];
+    let used = 0;
+    for (const item of items) {
+      if (item.type === 'text') {
+        if (!item.text) continue;
+        let node = pool[used++];
+        if (!node) {
+          node = document.createTextNode('');
+          snapshot.created.push(node);
+        }
+        node.textContent = item.text;
+        sequence.push(node);
+        continue;
+      }
+      const entry = unit.elements.get(item.id);
+      if (!entry.atomic) {
+        const children = [...entry.el.childNodes];
+        snapshot.containers.push({ el: entry.el, children });
+        place(entry.el, item.children, children.filter(n => n.nodeType === Node.TEXT_NODE), null);
+      }
+      sequence.push(entry.el);
+    }
+    pool.slice(used).forEach(node => { node.textContent = ''; });
+    sequence.forEach(node => container.insertBefore(node, anchor));
+  };
+  place(unit.parent, rootItems, unit.nodes.filter(n => n.nodeType === Node.TEXT_NODE), snapshot.anchor);
+
+  for (const node of [...unit.textNodes, ...snapshot.created]) {
+    translatedTextMap.set(node, node.textContent);
+    originalTextMap.set(node, snapshot.texts.get(node) ?? '');
+  }
+  if (live) translatedUnits.push(snapshot);
+  return 'applied';
+}
+
+// 還原整頁翻譯套用過的段落（後套用的先還原）
+function restoreUnits() {
+  for (const snapshot of translatedUnits.reverse()) {
+    snapshot.texts.forEach((text, node) => { node.textContent = text; });
+    snapshot.created.forEach(node => node.remove());
+    for (const { el, children } of snapshot.containers) {
+      children.forEach(child => {
+        if (child.parentNode === el) el.appendChild(child);
+      });
+    }
+    const { parent, anchor } = snapshot;
+    if (!anchor || anchor.parentNode === parent) {
+      snapshot.rootNodes.forEach(node => {
+        if (node.parentNode === parent) parent.insertBefore(node, anchor);
+      });
+    }
+  }
+  translatedUnits = [];
+}
+
+/**
+ * 整頁翻譯：先整段翻，對不回去的段落再用舊方式逐片段翻
+ */
+async function translatePageUnits(units, fragmentNodes, { fromMutation = false } = {}) {
+  const failed = [];
+  await translateJobs('page', units.map(unit => ({
+    text: unit.html,
+    apply: translated => {
+      if (applyUnit(unit, translated, { live: true }) === 'invalid') failed.push(unit);
+    }
+  })), targetLanguage, 'html');
+
+  if (failed.length) console.warn(`CoCo：${failed.length} 段的標籤對不回去，改用逐片段翻譯`);
+  const fallbackNodes = [...fragmentNodes, ...failed.flatMap(unit => unit.meaningfulTextNodes)];
+  const jobs = fallbackNodes.flatMap(node => collectPageTextJobs(node, { fromMutation }));
+  await translateJobs('page', jobs, targetLanguage);
+}
+
 const handleTranslation = async target => {
   if (!isEnabled || !target || target.closest('.immersive-translation-container')) return;
   const container = getClosestContentContainer(target);
@@ -363,24 +628,37 @@ const handleTranslation = async target => {
 const translateHTMLStructure = async html => {
   const container = document.createElement('div');
   container.innerHTML = html;
-  const nodes = [];
-  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, null);
-  while (walker.nextNode()) {
-    const node = walker.currentNode;
-    if (!node.textContent.trim() || SKIP_TAGS.has(node.parentElement?.tagName)) continue;
-    nodes.push(node);
-  }
-  if (!nodes.length) return container.innerHTML;
-
-  const parts = nodes.map(node => splitWhitespace(node.textContent));
   const role = isPageTranslationMode ? 'page' : 'trigger';
-  const { translations, error } = await requestTranslations(role, parts.map(part => part.core), targetLanguage);
-  // 全部失敗就別插一份跟原文一模一樣的東西
-  if (error && translations.every((t, i) => t === parts[i].core)) return null;
+  const { units, fragmentNodes } = collectUnits(container);
+  let translatedAny = false;
+  let hadError = false;
 
-  nodes.forEach((node, i) => {
-    node.textContent = parts[i].lead + translations[i] + parts[i].trail;
-  });
+  // 先整段翻
+  const fallbackNodes = [...fragmentNodes];
+  if (units.length) {
+    const { translations, error } = await requestTranslations(role, units.map(unit => unit.html), targetLanguage, 'html');
+    hadError = !!error;
+    units.forEach((unit, i) => {
+      if (error && translations[i] === unit.html) return;
+      if (applyUnit(unit, translations[i], { live: false }) === 'applied') translatedAny = true;
+      else fallbackNodes.push(...unit.meaningfulTextNodes);
+    });
+  }
+
+  // 標籤對不回去的，退回逐片段翻
+  if (fallbackNodes.length) {
+    const parts = fallbackNodes.map(node => splitWhitespace(node.textContent));
+    const { translations, error } = await requestTranslations(role, parts.map(part => part.core), targetLanguage);
+    hadError ||= !!error;
+    fallbackNodes.forEach((node, i) => {
+      if (error && translations[i] === parts[i].core) return;
+      node.textContent = parts[i].lead + translations[i] + parts[i].trail;
+      translatedAny = true;
+    });
+  }
+
+  // 全部失敗就別插一份跟原文一模一樣的東西
+  if (hadError && !translatedAny) return null;
   return container.innerHTML;
 };
 
@@ -389,17 +667,15 @@ const translatePage = async () => {
   isPageTranslationMode = true;
   hideTranslationButton();
   startAutoTranslationObserver();
-  const jobs = [
-    ...collectPageTextJobs(document.body),
-    ...collectTextareaJobs(),
-    ...collectAttributeJobs()
-  ];
-  await translateJobs('page', jobs, targetLanguage);
+  const { units, fragmentNodes } = collectUnits(document.body);
+  await translatePageUnits(units, fragmentNodes);
+  await translateJobs('page', [...collectTextareaJobs(), ...collectAttributeJobs()], targetLanguage);
 };
 
 const restorePage = () => {
   disableAutoTranslation();
   removeAllTranslations();
+  restoreUnits();
   const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null);
   while (walker.nextNode()) {
     const node = walker.currentNode;
@@ -496,10 +772,22 @@ const startAutoTranslationObserver = () => {
 
   clearTimeout(debounceTimer);
   debounceTimer = setTimeout(async () => {
-    const nodes = [...pendingNodes];
+    const connected = [...new Set(pendingNodes)].filter(node => node.isConnected);
     pendingNodes = [];
-    const jobs = nodes.filter(node => node.isConnected).flatMap(node => collectPageTextJobs(node, { fromMutation: true }));
-    await translateJobs('page', jobs, targetLanguage);
+    // 父節點也在清單裡的就不用重複收集
+    const roots = connected.filter(node => !connected.some(other => other !== node && other.contains(node)));
+    const units = [];
+    const fragmentNodes = [];
+    for (const node of roots) {
+      if (node.nodeType === Node.TEXT_NODE) {
+        fragmentNodes.push(node);
+        continue;
+      }
+      const collected = collectUnits(node, { fromMutation: true });
+      units.push(...collected.units);
+      fragmentNodes.push(...collected.fragmentNodes);
+    }
+    await translatePageUnits(units, fragmentNodes, { fromMutation: true });
   }, 300);
   });
   pageTranslationObserver.observe(document.body, {

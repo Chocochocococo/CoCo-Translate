@@ -523,17 +523,22 @@ try {
     body: `<!doctype html><html><body>
       <div id="movie_player" class="html5-video-player" style="position:relative;width:640px;height:360px;background:#000">
         <div class="ytp-caption-window-container">
+          <!-- YouTube 會留下用過、藏起來的字幕框 -->
+          <div class="caption-window ytp-caption-window-top" style="display:none">
+            <span class="captions-text"><span class="caption-visual-line"><span class="ytp-caption-segment">So, one of Musk's Doge Bros</span></span></span>
+          </div>
           <div class="caption-window ytp-caption-window-bottom" style="position:absolute;bottom:20px;left:50%;transform:translateX(-50%)">
             <span class="captions-text"></span>
           </div>
         </div>
+        <button class="ytp-subtitles-button" aria-pressed="true">CC</button>
       </div></body></html>`
   }));
   const yt = await context.newPage();
   yt.on('pageerror', err => errors.push('youtube pageerror: ' + err.message));
   await yt.goto('https://www.youtube.com/watch?v=test');
   const setCaptions = lines => yt.evaluate(lines => {
-    document.querySelector('.captions-text').innerHTML = lines
+    document.querySelector('.ytp-caption-window-bottom .captions-text').innerHTML = lines
       .map(line => `<span class="caption-visual-line"><span class="ytp-caption-segment" style="font-size:20px">${line}</span></span>`)
       .join('');
   }, lines);
@@ -550,17 +555,20 @@ try {
     assert.equal(await yt.evaluate(() => getComputedStyle(document.querySelector('.ytp-caption-window-container')).opacity), '0');
     assert.equal(await yt.evaluate(() => getComputedStyle(document.querySelector('#coco-yt-subtitle')).fontSize), '20px');
   });
+  await check('YouTube 字幕：不讀 YouTube 藏起來的舊字幕框', async () => {
+    assert.doesNotMatch(await yt.textContent('#coco-yt-subtitle'), /Doge/);
+  });
   await check('YouTube 字幕：字幕框放在原本 CC 的位置，拖曳 CC 會跟著移動', async () => {
     const aligned = () => yt.evaluate(() => {
       const box = document.querySelector('#coco-yt-subtitle').getBoundingClientRect();
-      const caption = document.querySelector('.caption-window').getBoundingClientRect();
+      const caption = document.querySelector('.ytp-caption-window-bottom').getBoundingClientRect();
       return Math.abs(box.bottom - caption.bottom) < 2 && Math.abs((box.left + box.right) / 2 - (caption.left + caption.right) / 2) < 2;
     });
     assert.ok(await aligned(), '字幕框要對齊原本 CC 的位置');
-    await yt.evaluate(() => { document.querySelector('.caption-window').style.bottom = '200px'; });   // 模擬使用者把 CC 拖上去
+    await yt.evaluate(() => { document.querySelector('.ytp-caption-window-bottom').style.bottom = '200px'; });   // 模擬使用者把 CC 拖上去
     await yt.waitForTimeout(200);
     assert.ok(await aligned(), '拖曳後要跟著移動');
-    await yt.evaluate(() => { document.querySelector('.caption-window').style.bottom = '20px'; });
+    await yt.evaluate(() => { document.querySelector('.ytp-caption-window-bottom').style.bottom = '20px'; });
   });
   const beforeRolling = llmRequests.length;
   for (const partial of ['Today we', 'Today we will', 'Today we will learn', 'Today we will learn about', 'Today we will learn about foxes']) {
@@ -591,6 +599,26 @@ try {
   await check('YouTube 字幕：字幕消失時字幕框也隱藏', async () => {
     await yt.waitForFunction(() => document.querySelector('#coco-yt-subtitle')?.style.display === 'none', null, { timeout: 3000 });
   });
+  const boxShown = () => yt.waitForFunction(() => document.querySelector('#coco-yt-subtitle')?.style.display === 'block', null, { timeout: 3000 });
+  const boxHidden = () => yt.waitForFunction(() => document.querySelector('#coco-yt-subtitle')?.style.display === 'none', null, { timeout: 3000 });
+  await setCaptions(['Still talking']);
+  await boxShown();
+  // YouTube 只改 style 把字幕藏起來（文字還在 DOM 裡）
+  await yt.evaluate(() => { document.querySelector('.ytp-caption-window-bottom').style.display = 'none'; });
+  await check('YouTube 字幕：原字幕只是被 style 藏起來，字幕框也跟著藏', async () => {
+    await boxHidden();
+  });
+  await yt.evaluate(() => { document.querySelector('.ytp-caption-window-bottom').style.display = ''; });
+  await check('YouTube 字幕：原字幕重新出現，字幕框也回來', async () => {
+    await boxShown();
+    assert.equal(await yt.textContent('#coco-yt-subtitle .coco-yt-original'), 'Still talking');
+  });
+  await yt.evaluate(() => document.querySelector('.ytp-subtitles-button').setAttribute('aria-pressed', 'false'));
+  await check('YouTube 字幕：關掉 CC 按鈕，就算 DOM 裡還有字幕也不顯示', async () => {
+    await boxHidden();
+  });
+  await yt.evaluate(() => document.querySelector('.ytp-subtitles-button').setAttribute('aria-pressed', 'true'));
+  await boxShown();
   await sw.evaluate(() => chrome.storage.local.set({ enableYouTubeSubtitles: false }));
   await check('YouTube 字幕：關閉後移除字幕框，原本的 CC 恢復顯示', async () => {
     await yt.waitForFunction(() => !document.querySelector('#coco-yt-subtitle'), null, { timeout: 3000 });

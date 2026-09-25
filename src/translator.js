@@ -62,14 +62,20 @@ const RETRY_DELAYS = [500, 1500];
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 // fetch 本身失敗（斷網、DNS、CORS）也包成 TranslationError；
-// 伺服器暫時出錯（5xx）或連線失敗會自動重試兩次，額度用完（429）這類就不重試
-const safeFetch = async (url, options, providerLabel) => {
+// 伺服器暫時出錯（5xx）或連線失敗會自動重試兩次，額度用完（429）這類就不重試。
+// 每次請求最多等 timeoutMs（預設 60 秒）：連線卡住不回的時候，別讓畫面永遠停在「翻譯中」
+const DEFAULT_TIMEOUT_MS = 60000;
+const safeFetch = async (url, options = {}, providerLabel, timeoutMs = DEFAULT_TIMEOUT_MS) => {
   for (let attempt = 0; ; attempt++) {
     const canRetry = attempt < RETRY_DELAYS.length;
     let response;
     try {
-      response = await fetch(url, options);
+      response = await fetch(url, { ...options, signal: AbortSignal.timeout(timeoutMs) });
     } catch (error) {
+      // 等太久就算了，重試只會讓使用者等更久
+      if (error?.name === 'TimeoutError') {
+        throw new TranslationError('network', `${providerLabel}: no response after ${Math.round(timeoutMs / 1000)}s`);
+      }
       if (canRetry) {
         await sleep(RETRY_DELAYS[attempt]);
         continue;

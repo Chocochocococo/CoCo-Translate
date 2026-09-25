@@ -1327,28 +1327,28 @@ function showWordCard(info) {
 
   const card = wordCard;
   let result = { translation: '', phonetic: '' };
-  chrome.runtime.sendMessage({ type: 'LOOKUP_WORD', word, targetLang: targetLanguage }, response => {
+  // 譯文（觸發式翻譯的來源）和字典分開查，誰先回來誰先顯示
+  requestTranslations('trigger', [word], targetLanguage, 'text', { quiet: true }).then(({ translations, error }) => {
     if (card !== wordCard) return;   // 已經關掉或換了一張
-    if (chrome.runtime.lastError || !response) {
-      translation.textContent = describeError({ code: 'network', provider: '' });
+    if (error) {
+      translation.textContent = `⚠ ${describeError(error)}`;
       return;
     }
-    if (response.error) {
-      translation.textContent = `⚠ ${describeError(response.error)}`;
-    } else {
-      translation.textContent = response.translation;
-      result.translation = response.translation;
-      setSaveEnabled(true);
-    }
-    const dictionary = response.dictionary;
-    if (dictionary) {
-      phonetic.textContent = dictionary.phonetic || '';
-      result.phonetic = dictionary.phonetic || '';
-      dictionary.meanings.forEach(meaning => {
-        const item = el('li', {}, `${meaning.partOfSpeech ? `(${meaning.partOfSpeech}) ` : ''}${meaning.definition}`);
-        definitions.appendChild(item);
-      });
-    }
+    translation.textContent = translations[0];
+    result.translation = translations[0];
+    setSaveEnabled(true);
+  });
+
+  chrome.runtime.sendMessage({ type: 'LOOKUP_DICTIONARY', word }, response => {
+    if (chrome.runtime.lastError || card !== wordCard) return;
+    const dictionary = response?.dictionary;
+    if (!dictionary) return;
+    phonetic.textContent = dictionary.phonetic || '';
+    result.phonetic = dictionary.phonetic || '';
+    dictionary.meanings.forEach(meaning => {
+      const item = el('li', {}, `${meaning.partOfSpeech ? `(${meaning.partOfSpeech}) ` : ''}${meaning.definition}`);
+      definitions.appendChild(item);
+    });
   });
 
   saveButton.addEventListener('click', async () => {
@@ -1943,10 +1943,25 @@ const YouTubeSubtitles = (() => {
   let lastRun = 0;
   let renderId = 0;
   let lastTranslated = '';
+  let lastSignature = '';
 
   const normalize = text => text.replace(/\s+/g, '');
 
-  const captionLines = () => [...document.querySelectorAll(`${CAPTION_WINDOW_SELECTOR} .caption-visual-line`)]
+  // 按鈕顯示 CC 關著 → 不管 DOM 裡還剩什麼，都當作沒有字幕
+  const captionsTurnedOff = () =>
+    player?.querySelector('.ytp-subtitles-button')?.getAttribute('aria-pressed') === 'false';
+
+  // 只看真的有顯示的字幕框：YouTube 會把用過的字幕框藏起來（display: none）卻不刪掉，
+  // 之前連那些一起讀，舊字幕就一直黏在畫面上，幹。
+  // （我們自己把原字幕設成透明，透明的照樣有大小，所以用 getClientRects 判斷）
+  const visibleCaptionWindows = () => {
+    if (!player || captionsTurnedOff()) return [];
+    return [...player.querySelectorAll(CAPTION_WINDOW_SELECTOR)]
+      .filter(win => win.getClientRects().length > 0 && getComputedStyle(win).visibility !== 'hidden');
+  };
+
+  const captionLines = () => visibleCaptionWindows()
+    .flatMap(win => [...win.querySelectorAll('.caption-visual-line')])
     .map(line => line.textContent.replace(/\s+/g, ' ').trim())
     .filter(Boolean);
 
@@ -1997,7 +2012,7 @@ const YouTubeSubtitles = (() => {
   const followNativePosition = () => {
     frame = null;
     if (!box || box.style.display === 'none' || !player) return;
-    const captionWindow = document.querySelector(CAPTION_WINDOW_SELECTOR);
+    const [captionWindow] = visibleCaptionWindows();
     if (captionWindow) {
       const playerRect = player.getBoundingClientRect();
       const captionRect = captionWindow.getBoundingClientRect();
@@ -2049,6 +2064,7 @@ const YouTubeSubtitles = (() => {
   const render = async () => {
     lastRun = Date.now();
     const lines = captionLines();
+    lastSignature = lines.join('\n');
     if (!enabled || !lines.length) {
       hide();
       return;
@@ -2089,6 +2105,13 @@ const YouTubeSubtitles = (() => {
     observer.observe(player, { childList: true, subtree: true, characterData: true });
   };
 
+  // 保險：YouTube 有時只改 style 就把字幕藏起來（關 CC、換字幕軌），MutationObserver 沒在看屬性，
+  // 所以定期比對一次目前的字幕，不一樣就重畫
+  const poll = () => {
+    attach();
+    if (captionLines().join('\n') !== lastSignature) schedule();
+  };
+
   const setEnabled = value => {
     enabled = !!value && isYouTube;
     hideNativeCaptions(enabled);
@@ -2104,11 +2127,12 @@ const YouTubeSubtitles = (() => {
       box?.remove();
       box = null;
       lastTranslated = '';
+      lastSignature = '';
       return;
     }
     // YouTube 是單頁應用程式，播放器可能晚一點才出現，也可能換掉，定期檢查
     attach();
-    pollTimer ??= setInterval(attach, 1000);
+    pollTimer ??= setInterval(poll, 500);
     schedule();
   };
 

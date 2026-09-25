@@ -378,3 +378,30 @@ test('Google 502 錯誤頁：重試後還是失敗，只顯示標題不塞整頁
   assert.equal(result.error.message, 'Google Translate 502 Error 502 (Server Error)!!1');
   assert.equal(translateCalls, 3, '第一次＋重試兩次');
 });
+
+// ---------------------------------------------------------------- 逾時
+// 假的 fetch：永遠不回應，只有被 signal 中斷時才結束（像連線卡住的伺服器）
+// （Node 的 AbortSignal.timeout 計時器不會讓程式等它，所以另外掛一個計時器撐著）
+const hangingFetch = async (url, init) => new Promise((resolve, reject) => {
+  const keepAlive = setTimeout(() => {}, 5000);
+  init.signal.addEventListener('abort', () => {
+    clearTimeout(keepAlive);
+    reject(init.signal.reason);
+  });
+});
+
+test('safeFetch: 連線卡住時逾時變成 network 錯誤，而且不重試', async () => {
+  const { context, fetchCalls } = loadBackground({ fetch: hangingFetch });
+  await assert.rejects(context.safeFetch('https://example.com/', {}, 'Test', 50), error => {
+    assert.equal(error.code, 'network');
+    assert.match(error.message, /no response/);
+    return true;
+  });
+  assert.equal(fetchCalls.length, 1);
+});
+
+test('Dictionary: 字典伺服器卡住時回傳 null，不會一直等', async () => {
+  const { context } = loadBackground({ fetch: hangingFetch });
+  const result = await context.Dictionary.lookup('serendipity', 50);
+  assert.equal(result, null);
+});

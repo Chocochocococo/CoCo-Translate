@@ -341,3 +341,40 @@ test('OpenAICompatibleTranslator: Gemini / Groq 預設值，Gemini 模型清單�
   assert.equal(JSON.parse(groqCall.init.body).model, 'qwen/qwen3.8-27b');
   await assert.rejects(new context.OpenAICompatibleTranslator({ provider: 'groq' }).translateBatch(['a'], 'zh-TW'), { code: 'config' });
 });
+
+// ---------------------------------------------------------------- 暫時性錯誤
+test('safeFetch: 5xx 和連線失敗會重試，429 不重試', async () => {
+  let calls = 0;
+  const { context } = loadBackground({
+    fetch: async () => {
+      calls++;
+      if (calls === 1) throw new TypeError('Failed to fetch');
+      if (calls === 2) return new Response('busy', { status: 502 });
+      return jsonResponse([['你好']]);
+    }
+  });
+  const response = await context.safeFetch('https://x.test/', {}, 'Test');
+  assert.equal(response.status, 200);
+  assert.equal(calls, 3);
+
+  calls = 0;
+  const limited = loadBackground({ fetch: async () => { calls++; return new Response('slow down', { status: 429 }); } });
+  assert.equal((await limited.context.safeFetch('https://x.test/', {}, 'Test')).status, 429);
+  assert.equal(calls, 1);
+});
+
+test('Google 502 錯誤頁：重試後還是失敗，只顯示標題不塞整頁 HTML', async () => {
+  const page = '<!DOCTYPE html>\n<html lang=en>\n<meta charset=utf-8>\n<title>Error 502 (Server Error)!!1</title>\n<style>*{margin:0}</style><p>long body</p>';
+  let translateCalls = 0;
+  const { context } = loadBackground({
+    fetch: async url => {
+      if (url.includes('translate_http')) return new Response('');
+      translateCalls++;
+      return new Response(page, { status: 502, statusText: '' });
+    }
+  });
+  const result = plain(await context.TranslationService.translate({ texts: ['Hello'], targetLang: 'zh-TW' }));
+  assert.deepEqual(result.translations, ['Hello']);
+  assert.equal(result.error.message, 'Google Translate 502 Error 502 (Server Error)!!1');
+  assert.equal(translateCalls, 3, '第一次＋重試兩次');
+});

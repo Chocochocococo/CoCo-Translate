@@ -1,92 +1,382 @@
 <!DOCTYPE html>
-<html>
+<html lang="zh-Hant">
 <head>
   <meta charset="utf-8" />
-  <title>CoCo Translate Settings</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CoCo Translate</title>
+  <!-- theme.js 要最先跑，打開時才不會先閃一下白色 -->
+  <script src="theme.js"></script>
+  <link rel="stylesheet" href="theme.css">
   <link rel="stylesheet" href="options.css">
 </head>
 <body>
   <nav class="side-nav">
-    <h1>CoCo Translate</h1>
-    <a href="#sites" id="navSites" data-section="sites">Sites</a>
-    <a href="#glossary" id="navGlossary" data-section="glossary">Glossary</a>
-    <a href="#vocabulary" id="navVocabulary" data-section="vocabulary">Vocabulary</a>
-    <a href="#regex" id="navRegex" data-section="regex">Regex</a>
+    <div class="brand">
+      <img src="icons/icon-48.png" alt="">
+      <span data-i18n="appName">CoCo Translate</span>
+    </div>
+    <a href="#general" id="navGeneral" data-section="general"><span class="nav-icon">⚙️</span><span data-i18n="navGeneral">一般</span></a>
+    <a href="#sources" id="navSources" data-section="sources"><span class="nav-icon">🌐</span><span data-i18n="navSources">翻譯來源與 AI</span></a>
+    <a href="#sites" id="navSites" data-section="sites"><span class="nav-icon">⭐</span><span data-i18n="navSites">網站清單</span></a>
+    <a href="#glossary" id="navGlossary" data-section="glossary"><span class="nav-icon">📚</span><span data-i18n="navGlossary">術語表</span></a>
+    <a href="#vocabulary" id="navVocabulary" data-section="vocabulary"><span class="nav-icon">📖</span><span data-i18n="navVocabulary">生字本</span></a>
+    <a href="#regex" id="navRegex" data-section="regex"><span class="nav-icon">🔣</span><span data-i18n="navRegex">正規表達式</span></a>
+    <span id="version" class="version"></span>
   </nav>
 
   <main>
-    <!-- 總是翻譯的網站 -->
-    <section id="sites" class="panel">
-      <h2 id="sitesTitle">Always Translate These Sites</h2>
-      <p id="sitesDescription" class="description">
-        Pages on these sites are translated automatically.
-      </p>
-      <ul class="examples">
-        <li><code>example.com</code> <span id="siteExampleHost">this domain only</span></li>
-        <li><code>*.example.com</code> <span id="siteExampleWildcard">example.com and all its subdomains</span></li>
-        <li><code>https://example.com</code> <span id="siteExampleOrigin">this exact origin</span></li>
-      </ul>
-      <div class="row">
-        <input type="text" id="siteInput" class="text-input" placeholder="*.example.com">
-        <button id="addSiteBtn" class="btn">Add</button>
+    <!-- ================= 一般 ================= -->
+    <section id="panel-general" class="panel">
+      <h1 data-i18n="generalTitle">一般設定</h1>
+
+      <div class="card">
+        <h2 class="card-title" data-i18n="interfaceCard">介面</h2>
+        <label class="row">
+          <span class="label" data-i18n="uiLanguage">介面語言</span>
+          <span class="pill">
+            <select id="languageSelector">
+              <option value="zh">中文</option>
+              <option value="en">English</option>
+            </select>
+          </span>
+        </label>
+        <div class="row">
+          <span class="label"><span data-i18n="appearance">外觀</span><small data-i18n="appearanceHint"></small></span>
+          <div id="themeSegmented" class="segmented">
+            <button type="button" data-value="auto" data-i18n="themeAuto">自動</button>
+            <button type="button" data-value="light" data-i18n="themeLight">淺色</button>
+            <button type="button" data-value="dark" data-i18n="themeDark">深色</button>
+          </div>
+        </div>
       </div>
-      <ul id="siteList" class="item-list"></ul>
-      <p id="siteListEmpty" class="empty">No sites yet.</p>
+
+      <div class="card">
+        <h2 class="card-title" data-i18n="pageCard">整頁翻譯</h2>
+        <label class="row">
+          <span class="label" data-i18n="targetLanguage">翻譯成</span>
+          <span class="pill">
+            <select id="targetLanguage">
+              <option value="zh-TW" data-i18n="langZhTW">繁體中文</option>
+              <option value="en" data-i18n="langEn">英文</option>
+              <option value="ja" data-i18n="langJa">日文</option>
+              <option value="ko" data-i18n="langKo">韓文</option>
+            </select>
+          </span>
+        </label>
+        <div class="row">
+          <span class="label" data-i18n="displayMode">顯示方式</span>
+          <div id="pageDisplayMode" class="segmented">
+            <button type="button" data-value="replace" data-i18n="displayReplace">取代原文</button>
+            <button type="button" data-value="bilingual" data-i18n="displayBilingual">雙語對照</button>
+          </div>
+        </div>
+        <label class="row">
+          <span class="label" data-i18n="showOriginalTooltip">滑鼠移到譯文上顯示原文</span>
+          <span class="switch"><input type="checkbox" id="showOriginalTooltip"><span class="slider"></span></span>
+        </label>
+        <div class="row">
+          <span class="label"><span data-i18n="shortcut">快捷鍵</span><small data-i18n="shortcutHint"></small></span>
+          <kbd id="shortcutDisplay">—</kbd>
+          <button id="openShortcutSettingsBtn" class="btn secondary small" type="button" data-i18n="setShortcuts">修改</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2 class="card-title" data-i18n="triggerCard">滑鼠觸發翻譯</h2>
+        <label class="row">
+          <span class="label" data-i18n="enableTrigger">啟用滑鼠觸發翻譯</span>
+          <span class="switch"><input type="checkbox" id="toggleTranslation"><span class="slider"></span></span>
+        </label>
+        <label class="row">
+          <span class="label"><span data-i18n="triggerKey">觸發鍵</span><small data-i18n="triggerKeyHint"></small></span>
+          <input type="text" id="triggerKey" class="text-input key-input" readonly>
+        </label>
+      </div>
+
+      <div class="card">
+        <h2 class="card-title" data-i18n="selectionCard">選取與輸入</h2>
+        <label class="row">
+          <span class="label"><span data-i18n="selectionButton">選取文字時顯示工具列</span><small data-i18n="selectionButtonHint"></small></span>
+          <span class="switch"><input type="checkbox" id="enableSelectionButton"><span class="slider"></span></span>
+        </label>
+        <label class="row">
+          <span class="label" data-i18n="floatingButton">輸入框顯示翻譯按鈕</span>
+          <span class="switch"><input type="checkbox" id="enableFloatingButton"><span class="slider"></span></span>
+        </label>
+        <label class="row">
+          <span class="label" data-i18n="inputTargetLanguage">輸入框翻譯成</span>
+          <span class="pill">
+            <select id="inputTargetLanguage">
+              <option value="en" data-i18n="langEn">英文</option>
+              <option value="zh-TW" data-i18n="langZhTW">繁體中文</option>
+              <option value="ja" data-i18n="langJa">日文</option>
+              <option value="ko" data-i18n="langKo">韓文</option>
+            </select>
+          </span>
+        </label>
+        <label class="row">
+          <span class="label" data-i18n="contextMenu">右鍵選單</span>
+          <span class="pill">
+            <select id="contextMenuMode">
+              <option value="1" data-i18n="cocoMenu">只顯示可可選單</option>
+              <option value="2" data-i18n="bothMenu">兩種選單都顯示</option>
+              <option value="3" data-i18n="defaultMenu">只顯示瀏覽器選單</option>
+            </select>
+          </span>
+        </label>
+      </div>
+
+      <div class="card">
+        <h2 class="card-title" data-i18n="youTubeSubtitles">YouTube 字幕</h2>
+        <label class="row">
+          <span class="label"><span data-i18n="youTubeEnable">翻譯 YouTube 字幕</span><small class="wrap" data-i18n="youTubeSubtitlesHint"></small></span>
+          <span class="switch"><input type="checkbox" id="enableYouTubeSubtitles"><span class="slider"></span></span>
+        </label>
+        <div class="row">
+          <span class="label" data-i18n="displayMode">顯示方式</span>
+          <div id="youTubeSubtitleMode" class="segmented">
+            <button type="button" data-value="bilingual" data-i18n="youTubeModeBilingual">雙語</button>
+            <button type="button" data-value="translation" data-i18n="youTubeModeTranslation">只譯文</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2 class="card-title" data-i18n="advancedCard">進階</h2>
+        <label class="row">
+          <span class="label" data-i18n="enableCustomRegex">譯文套用自訂正規表達式</span>
+          <span class="switch"><input type="checkbox" id="enableCustomRegex"><span class="slider"></span></span>
+        </label>
+        <label class="row">
+          <span class="label"><span data-i18n="useDiskCache">把譯文存在電腦上</span><small data-i18n="useDiskCacheHint"></small></span>
+          <span class="switch"><input type="checkbox" id="useDiskCache"><span class="slider"></span></span>
+        </label>
+        <div class="row">
+          <span id="cacheSizeDisplay" class="label"></span>
+          <button id="clearCacheBtn" class="btn danger small" type="button" data-i18n="clearCache">清除快取</button>
+        </div>
+      </div>
     </section>
 
-    <!-- 術語表 -->
-    <section id="glossary" class="panel">
-      <h2 id="glossaryTitle">Glossary</h2>
-      <p id="glossaryDescription" class="description">
-        Names and terms that should always be translated the same way.
-      </p>
-      <p id="glossaryHint" class="hint">
-        AI translation gets the glossary in its prompt; Google / Bing / DeepL receive the fixed translation marked as "do not translate".
-      </p>
-      <div class="row">
-        <input type="text" id="glossarySource" class="text-input" placeholder="Lin Feng">
-        <span>→</span>
-        <input type="text" id="glossaryTarget" class="text-input" placeholder="林楓">
-        <input type="text" id="glossarySite" class="text-input" placeholder="*.novel-site.com">
-        <button id="addGlossaryBtn" class="btn">Add</button>
+    <!-- ================= 翻譯來源與 AI ================= -->
+    <section id="panel-sources" class="panel">
+      <h1 data-i18n="sourcesTitle">翻譯來源與 AI</h1>
+
+      <div class="card">
+        <h2 class="card-title" data-i18n="sourcesCard">翻譯來源</h2>
+        <label class="row">
+          <span class="label" data-i18n="triggerSource">滑鼠觸發與選取翻譯</span>
+          <span class="pill">
+            <select id="triggerSource">
+              <option value="google" data-i18n="sourceGoogle">Google 翻譯</option>
+              <option value="google-api" data-i18n="sourceGoogleApi">Google Cloud API</option>
+              <option value="bing" data-i18n="sourceBing">Bing 翻譯</option>
+              <option value="deepl-api" data-i18n="sourceDeepL">DeepL API</option>
+              <option value="llm" data-i18n="sourceLlm">AI 翻譯</option>
+            </select>
+          </span>
+        </label>
+        <label class="row">
+          <span class="label" data-i18n="pageSourceLong">整頁翻譯與 YouTube 字幕</span>
+          <span class="pill">
+            <select id="pageSource">
+              <option value="google" data-i18n="sourceGoogle">Google 翻譯</option>
+              <option value="google-api" data-i18n="sourceGoogleApi">Google Cloud API</option>
+              <option value="bing" data-i18n="sourceBing">Bing 翻譯</option>
+              <option value="deepl-api" data-i18n="sourceDeepL">DeepL API</option>
+              <option value="llm" data-i18n="sourceLlm">AI 翻譯</option>
+            </select>
+          </span>
+        </label>
+        <div class="card-foot">
+          <p class="hint" data-i18n="sourcesHint"></p>
+          <p id="sourceWarning" class="warning hidden"></p>
+        </div>
       </div>
-      <p id="glossarySiteHint" class="hint">Leave the site empty to use the entry everywhere.</p>
-      <ul id="glossaryList" class="item-list"></ul>
-      <p id="glossaryEmpty" class="empty">No entries yet.</p>
-      <div class="row" style="margin-top: 12px">
-        <button id="exportGlossaryBtn" class="btn secondary">Export</button>
-        <button id="importGlossaryBtn" class="btn secondary">Import</button>
+
+      <div class="card">
+        <h2 class="card-title" data-i18n="llmCard">AI 翻譯（OpenAI 相容）</h2>
+        <label class="row">
+          <span class="label" data-i18n="llmProvider">供應商</span>
+          <span class="pill">
+            <select id="llmProvider">
+              <option value="ollama-cloud">Ollama Cloud</option>
+              <option value="openrouter">OpenRouter</option>
+              <option value="gemini">Google Gemini</option>
+              <option value="groq">Groq</option>
+              <option value="mistral">Mistral</option>
+              <option value="ollama-local" data-i18n="llmOllamaLocal">Ollama（本機）</option>
+              <option value="custom" data-i18n="llmCustom">自訂（OpenAI 相容）</option>
+            </select>
+          </span>
+        </label>
+        <div class="card-foot">
+          <p id="llmHint" class="hint"></p>
+        </div>
+        <div class="field">
+          <label for="llmBaseUrl" data-i18n="llmBaseUrl">API 網址</label>
+          <input type="text" id="llmBaseUrl" class="text-input">
+        </div>
+        <div class="field">
+          <label for="llmApiKey" data-i18n="apiKey">API 金鑰</label>
+          <input type="password" id="llmApiKey" class="text-input" data-i18n-placeholder="apiKeyPlaceholder">
+        </div>
+        <div class="field">
+          <label for="llmModel" data-i18n="llmModel">模型</label>
+          <div class="inline">
+            <input type="text" id="llmModel" class="text-input" list="llmModelList" autocomplete="off">
+            <datalist id="llmModelList"></datalist>
+            <button id="fetchLlmModelsBtn" class="btn secondary" type="button" data-i18n="loadModels">載入模型清單</button>
+          </div>
+        </div>
+        <div class="actions">
+          <button id="saveLlmBtn" class="btn" type="button" data-i18n="save">儲存</button>
+          <button id="deleteLlmKeyBtn" class="btn secondary" type="button" data-i18n="deleteKey">刪除金鑰</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2 class="card-title" data-i18n="promptCard">自訂 Prompt</h2>
+        <div class="card-foot">
+          <p class="hint" data-i18n="promptHint"></p>
+        </div>
+        <div class="row">
+          <span class="label" data-i18n="promptSelect">使用中的 Prompt</span>
+          <span class="pill"><select id="promptSelect"></select></span>
+          <button id="deleteCustomPromptBtn" class="btn danger small" type="button" data-i18n="delete">刪除</button>
+        </div>
+        <div class="field">
+          <label for="promptName" data-i18n="promptName">名稱</label>
+          <input type="text" id="promptName" class="text-input" data-i18n-placeholder="promptNamePlaceholder">
+        </div>
+        <div class="field">
+          <label for="customPrompt" data-i18n="promptContent">Prompt 內容</label>
+          <textarea id="customPrompt" class="text-input" data-i18n-placeholder="promptContentPlaceholder"></textarea>
+        </div>
+        <div class="actions">
+          <button id="saveCustomPromptBtn" class="btn" type="button" data-i18n="savePrompt">另存新 Prompt</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2 class="card-title" data-i18n="googleCard">Google Cloud Translation</h2>
+        <div class="field">
+          <label for="googleApiKey" data-i18n="apiKey">API 金鑰</label>
+          <div class="inline">
+            <input type="password" id="googleApiKey" class="text-input" data-i18n-placeholder="apiKeyPlaceholder">
+            <button id="saveApiKeyBtn" class="btn" type="button" data-i18n="save">儲存</button>
+            <button id="deleteApiKeyBtn" class="btn secondary" type="button" data-i18n="delete">刪除</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2 class="card-title" data-i18n="deepLCard">DeepL</h2>
+        <div class="field">
+          <label for="deepLApiKey" data-i18n="apiKey">API 金鑰</label>
+          <div class="inline">
+            <input type="password" id="deepLApiKey" class="text-input" data-i18n-placeholder="apiKeyPlaceholder">
+            <button id="saveDeepLApiKeyBtn" class="btn" type="button" data-i18n="save">儲存</button>
+            <button id="deleteDeepLApiKeyBtn" class="btn secondary" type="button" data-i18n="delete">刪除</button>
+          </div>
+        </div>
+        <label class="row">
+          <span class="label" data-i18n="deepLAccountType">帳戶類型</span>
+          <span class="pill">
+            <select id="deepLAccountType">
+              <option value="free" data-i18n="deepLFree">免費版</option>
+              <option value="pro" data-i18n="deepLPro">Pro 訂閱</option>
+            </select>
+          </span>
+        </label>
+      </div>
+    </section>
+
+    <!-- ================= 總是翻譯的網站 ================= -->
+    <section id="panel-sites" class="panel">
+      <h1 data-i18n="sitesTitle">總是翻譯的網站</h1>
+      <p class="description" data-i18n="sitesDescription"></p>
+      <div class="card padded">
+        <ul class="examples">
+          <li><code>example.com</code> <span data-i18n="siteExampleHost"></span></li>
+          <li><code>*.example.com</code> <span data-i18n="siteExampleWildcard"></span></li>
+          <li><code>https://example.com</code> <span data-i18n="siteExampleOrigin"></span></li>
+        </ul>
+        <div class="inline">
+          <input type="text" id="siteInput" class="text-input" placeholder="*.example.com">
+          <button id="addSiteBtn" class="btn" type="button" data-i18n="add">新增</button>
+        </div>
+      </div>
+      <div class="card">
+        <ul id="siteList" class="item-list"></ul>
+        <p id="siteListEmpty" class="empty" data-i18n="siteListEmpty"></p>
+      </div>
+    </section>
+
+    <!-- ================= 術語表 ================= -->
+    <section id="panel-glossary" class="panel">
+      <h1 data-i18n="glossaryTitle">術語表</h1>
+      <p class="description" data-i18n="glossaryDescription"></p>
+      <div class="card padded">
+        <p class="hint" data-i18n="glossaryHint"></p>
+        <div class="inline glossary-form">
+          <input type="text" id="glossarySource" class="text-input" placeholder="Lin Feng">
+          <span class="arrow">→</span>
+          <input type="text" id="glossaryTarget" class="text-input" placeholder="林楓">
+          <input type="text" id="glossarySite" class="text-input" placeholder="*.novel-site.com">
+          <button id="addGlossaryBtn" class="btn" type="button" data-i18n="add">新增</button>
+        </div>
+        <p class="hint" data-i18n="glossarySiteHint"></p>
+      </div>
+      <div class="card">
+        <ul id="glossaryList" class="item-list"></ul>
+        <p id="glossaryEmpty" class="empty" data-i18n="glossaryEmpty"></p>
+      </div>
+      <div class="actions plain">
+        <button id="exportGlossaryBtn" class="btn secondary" type="button" data-i18n="export">匯出</button>
+        <button id="importGlossaryBtn" class="btn secondary" type="button" data-i18n="import">匯入</button>
         <input type="file" id="importGlossaryFile" accept=".json" hidden>
       </div>
     </section>
 
-    <!-- 生字本 -->
-    <section id="vocabulary" class="panel">
-      <h2 id="vocabularyTitle">Vocabulary</h2>
-      <p id="vocabularyDescription" class="description">
-        Words saved from the word card (select text → 📖). Export them to import into Anki.
-      </p>
-      <div class="row">
-        <button id="exportAnkiBtn" class="btn">Export for Anki</button>
-        <button id="clearVocabularyBtn" class="btn secondary">Clear All</button>
+    <!-- ================= 生字本 ================= -->
+    <section id="panel-vocabulary" class="panel">
+      <h1 data-i18n="vocabularyTitle">生字本</h1>
+      <p class="description" data-i18n="vocabularyDescription"></p>
+      <div class="actions plain">
+        <button id="exportAnkiBtn" class="btn" type="button" data-i18n="exportAnki">匯出成 Anki 格式</button>
+        <button id="clearVocabularyBtn" class="btn danger" type="button" data-i18n="clearAll">全部刪除</button>
         <span id="vocabularyCount" class="hint"></span>
       </div>
-      <p id="ankiHint" class="hint">In Anki: File → Import, choose the exported file. Fields: word, translation, phonetic, context, source.</p>
-      <ul id="vocabularyList" class="item-list"></ul>
-      <p id="vocabularyEmpty" class="empty">No words yet.</p>
+      <p class="hint spaced" data-i18n="ankiHint"></p>
+      <div class="card">
+        <ul id="vocabularyList" class="item-list"></ul>
+        <p id="vocabularyEmpty" class="empty" data-i18n="vocabularyEmpty"></p>
+      </div>
     </section>
 
-    <!-- 匯入正規表達式（Firefox 的 popup 一開檔案對話框就會關掉，所以放這裡） -->
-    <section id="regex" class="panel">
-      <h2 id="Importrexgexpatternsid">Import Regex Patterns</h2>
-      <p class="description"><span id="Importrexgexpatternsdesid">Select your custom Regular Expression JSON file and load it into the extension. Importing will overwrite the existing patterns.</span></p>
-      <input type="file" id="importFile" accept=".json" hidden>
-      <button id="importBtn" class="btn">Import Regex File</button>
+    <!-- ================= 正規表達式 ================= -->
+    <!-- Firefox 的 popup 一開檔案對話框就會關掉，所以匯入一直都放在設定頁 -->
+    <section id="panel-regex" class="panel">
+      <h1 data-i18n="regexTitle">正規表達式</h1>
+      <p class="description" data-i18n="regexDescription"></p>
+      <div class="card">
+        <ul id="patternList" class="item-list"></ul>
+        <p id="patternEmpty" class="empty" data-i18n="regexEmpty"></p>
+      </div>
+      <div class="actions plain">
+        <button id="addPatternBtn" class="btn" type="button" data-i18n="addPattern">新增規則</button>
+        <button id="exportRegex" class="btn secondary" type="button" data-i18n="export">匯出</button>
+        <button id="importBtn" class="btn secondary" type="button" data-i18n="importRegexFile">匯入檔案</button>
+        <input type="file" id="importFile" accept=".json" hidden>
+      </div>
+      <p class="hint spaced" data-i18n="importRegexHint"></p>
     </section>
   </main>
 
   <script src="language.js"></script>
   <script src="sitePatterns.js"></script>
+  <script src="ui.js"></script>
   <script src="options.js"></script>
 </body>
 </html>

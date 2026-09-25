@@ -105,6 +105,75 @@ const describeError = error => {
   return `${error.provider ? error.provider + '：' : ''}${title}`;
 };
 
+// ---------------- 網頁裡的 UI 外觀：跟 popup 同一個設定（自動／淺色／深色） ----------------
+// 顏色做成 --coco-* 變數掛在我們自己的元素上，inline style 用 var(--coco-…)；
+// 不碰網頁的 <html>，也不用塞 <style>（有些網站的 CSP 會擋）
+const PageTheme = (() => {
+  const PALETTES = {
+    light: {
+      '--coco-surface': '#ffffff',
+      '--coco-surface-2': '#eef4e8',
+      '--coco-border': '#e3ead9',
+      '--coco-text': '#2e3a2a',
+      '--coco-muted': '#7b8a73',
+      '--coco-accent': '#5cb87a',
+      '--coco-accent-ink': '#ffffff',
+      '--coco-shadow': '0 6px 20px rgba(60, 80, 50, 0.22)',
+      '--coco-input-bg': 'rgba(200, 255, 200, 0.5)',
+      '--coco-output-bg': 'rgba(240, 255, 240, 0.5)',
+      '--coco-scheme': 'light'
+    },
+    // 他媽的，晚上看小說不刺眼
+    dark: {
+      '--coco-surface': '#212724',
+      '--coco-surface-2': '#2a312d',
+      '--coco-border': '#3a443e',
+      '--coco-text': '#e6ece8',
+      '--coco-muted': '#95a39b',
+      '--coco-accent': '#5ccb93',
+      '--coco-accent-ink': '#0f2219',
+      '--coco-shadow': '0 6px 20px rgba(0, 0, 0, 0.5)',
+      '--coco-input-bg': 'rgba(33, 52, 42, 0.92)',
+      '--coco-output-bg': 'rgba(28, 36, 32, 0.92)',
+      '--coco-scheme': 'dark'
+    }
+  };
+  const media = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+  const elements = new Set();
+  let mode = 'auto';
+
+  const resolved = () => (mode === 'dark' || (mode === 'auto' && media?.matches) ? 'dark' : 'light');
+
+  const paint = element => {
+    const theme = resolved();
+    Object.entries(PALETTES[theme]).forEach(([name, value]) => element.style.setProperty(name, value));
+    element.dataset.cocoTheme = theme;
+  };
+
+  const refresh = () => elements.forEach(element => {
+    // 單字卡這種關掉就丟的元素，不在頁面上了就別再管它
+    if (element.isConnected) paint(element);
+    else elements.delete(element);
+  });
+
+  const setMode = value => {
+    mode = ['auto', 'light', 'dark'].includes(value) ? value : 'auto';
+    refresh();
+  };
+
+  chrome.storage.local.get(['uiTheme'], data => setMode(data.uiTheme));
+  media?.addEventListener?.('change', refresh);
+
+  // 元素建立時登記一次，之後切換外觀會自動重畫
+  const register = element => {
+    elements.add(element);
+    paint(element);
+    return element;
+  };
+
+  return { register, setMode, resolved };
+})();
+
 // 同樣的錯誤 10 秒內只提示一次，別整頁翻譯時噴一百個
 let errorToast = null;
 let errorToastTimer = null;
@@ -147,11 +216,15 @@ const showTranslationError = error => {
  * 把一批文字丟給 background 翻譯
  * @returns {Promise<{translations: string[], error: Object|null}>}
  */
-const requestTranslations = (role, texts, targetLang = targetLanguage, format = 'text') => new Promise(resolve => {
+const requestTranslations = (role, texts, targetLang = targetLanguage, format = 'text', { quiet = false } = {}) => new Promise(resolve => {
   if (!texts.length) return resolve({ translations: [], error: null });
+  // quiet：字幕這種連續不斷的翻譯，失敗就等下一句再試，不跳提示
+  const report = error => {
+    if (!quiet) showTranslationError(error);
+  };
   const fail = message => {
     const error = { code: 'network', message, provider: '' };
-    showTranslationError(error);
+    report(error);
     resolve({ translations: texts, error });
   };
   try {
@@ -160,7 +233,7 @@ const requestTranslations = (role, texts, targetLang = targetLanguage, format = 
         console.error('Fuck, 翻譯請求失敗:', chrome.runtime.lastError);
         return fail(chrome.runtime.lastError?.message || 'No response from background');
       }
-      if (response.error) showTranslationError(response.error);
+      if (response.error) report(response.error);
       resolve({ translations: response.translations || texts, error: response.error || null });
     });
   } catch (e) {
@@ -1085,15 +1158,17 @@ const createTranslationButton = () => {
   if (selectionTranslationButton) return;
   selectionTranslationButton = document.createElement('div');
   selectionTranslationButton.id = 'coco-selection-toolbar';
+  PageTheme.register(selectionTranslationButton);
   Object.assign(selectionTranslationButton.style, {
     position: 'absolute',
     zIndex: '10000',
     display: 'none',
     gap: '2px',
-    padding: '2px',
-    background: 'rgba(255, 255, 255, 0.95)',
-    borderRadius: '8px',
-    boxShadow: '0 2px 8px rgba(0,0,0,0.2)'
+    padding: '3px',
+    background: 'var(--coco-surface)',
+    border: '1px solid var(--coco-border)',
+    borderRadius: '999px',
+    boxShadow: 'var(--coco-shadow)'
   });
 
   const makeButton = (content, titleKey, onClick) => {
@@ -1109,11 +1184,15 @@ const createTranslationButton = () => {
       width: '30px',
       height: '30px',
       border: 'none',
+      borderRadius: '50%',
       background: 'transparent',
       cursor: 'pointer',
       fontSize: '17px',
-      padding: '0'
+      padding: '0',
+      transition: 'background 0.15s'
     });
+    button.addEventListener('mouseenter', () => { button.style.background = 'var(--coco-surface-2)'; });
+    button.addEventListener('mouseleave', () => { button.style.background = 'transparent'; });
     // 按下去時別讓按鈕搶走網頁上的選取
     button.addEventListener('mousedown', e => e.preventDefault());
     button.addEventListener('click', e => {
@@ -1182,6 +1261,7 @@ function showWordCard(info) {
 
   wordCard = document.createElement('div');
   wordCard.id = 'coco-word-card';
+  PageTheme.register(wordCard);
   const width = 320;
   const left = Math.min(Math.max(8, info.rect.left), window.innerWidth - width - 8);
   const below = info.rect.bottom + 8;
@@ -1192,13 +1272,16 @@ function showWordCard(info) {
     width: `${width}px`,
     maxHeight: '320px',
     overflowY: 'auto',
-    padding: '12px 14px',
-    background: '#fff',
-    color: '#222',
-    font: '14px/1.5 system-ui, sans-serif',
+    padding: '14px 16px',
+    background: 'var(--coco-surface)',
+    color: 'var(--coco-text)',
+    colorScheme: 'var(--coco-scheme)',
+    font: '14px/1.5 system-ui, "Microsoft JhengHei", "PingFang TC", sans-serif',
     textAlign: 'left',
-    borderRadius: '10px',
-    boxShadow: '0 6px 20px rgba(0,0,0,0.25)',
+    border: '1px solid var(--coco-border)',
+    borderRadius: '16px',
+    boxShadow: 'var(--coco-shadow)',
+    boxSizing: 'border-box',
     zIndex: '10005'
   });
 
@@ -1210,8 +1293,8 @@ function showWordCard(info) {
   };
 
   const header = el('div', { display: 'flex', alignItems: 'baseline', gap: '8px', flexWrap: 'wrap' });
-  const title = el('strong', { fontSize: '17px' }, word);
-  const phonetic = el('span', { color: '#666' });
+  const title = el('strong', { fontSize: '17px', color: 'var(--coco-text)' }, word);
+  const phonetic = el('span', { color: 'var(--coco-muted)' });
   phonetic.className = 'coco-phonetic';
   const speakButton = el('button', { border: 'none', background: 'none', cursor: 'pointer', fontSize: '16px', padding: '0' }, '🔊');
   speakButton.title = toolbarText('speak');
@@ -1220,16 +1303,22 @@ function showWordCard(info) {
 
   const translation = el('div', { marginTop: '6px', fontSize: '15px' }, toolbarText('loading'));
   translation.className = 'coco-word-translation';
-  const definitions = el('ul', { margin: '6px 0 0', paddingLeft: '18px', color: '#444', fontSize: '13px' });
-  const context = el('div', { marginTop: '8px', color: '#666', fontSize: '12px', fontStyle: 'italic' });
+  const definitions = el('ul', { margin: '6px 0 0', paddingLeft: '18px', color: 'var(--coco-text)', opacity: '0.85', fontSize: '13px' });
+  const context = el('div', { marginTop: '8px', color: 'var(--coco-muted)', fontSize: '12px', fontStyle: 'italic' });
   if (info.context && info.context !== word) context.textContent = `${toolbarText('context')}：${info.context}`;
 
   const footer = el('div', { display: 'flex', gap: '8px', marginTop: '10px' });
-  const buttonStyle = { padding: '4px 10px', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px' };
-  const saveButton = el('button', { ...buttonStyle, background: '#3498db', color: '#fff' }, toolbarText('save'));
+  const buttonStyle = { padding: '5px 14px', border: 'none', borderRadius: '999px', cursor: 'pointer', font: '600 13px system-ui, sans-serif' };
+  const saveButton = el('button', { ...buttonStyle, background: 'var(--coco-accent)', color: 'var(--coco-accent-ink)' }, toolbarText('save'));
   saveButton.className = 'coco-save-word';
-  saveButton.disabled = true;
-  const closeButton = el('button', { ...buttonStyle, background: '#e0e0e0', color: '#333' }, toolbarText('close'));
+  // 還沒查到譯文、或已經收藏了 → 按鈕變淡
+  const setSaveEnabled = enabled => {
+    saveButton.disabled = !enabled;
+    saveButton.style.opacity = enabled ? '1' : '0.5';
+    saveButton.style.cursor = enabled ? 'pointer' : 'default';
+  };
+  setSaveEnabled(false);
+  const closeButton = el('button', { ...buttonStyle, background: 'var(--coco-surface-2)', color: 'var(--coco-text)' }, toolbarText('close'));
   closeButton.addEventListener('click', hideWordCard);
   footer.append(saveButton, closeButton);
 
@@ -1249,7 +1338,7 @@ function showWordCard(info) {
     } else {
       translation.textContent = response.translation;
       result.translation = response.translation;
-      saveButton.disabled = false;
+      setSaveEnabled(true);
     }
     const dictionary = response.dictionary;
     if (dictionary) {
@@ -1273,7 +1362,7 @@ function showWordCard(info) {
       addedAt: Date.now()
     });
     saveButton.textContent = toolbarText('saved');
-    saveButton.disabled = true;
+    setSaveEnabled(false);
   });
 }
 
@@ -1568,14 +1657,17 @@ const createTranslationBoxes = () => {
   // 建立輸入區域
   inputBox = document.createElement('textarea');
   inputBox.id = 'input-box';
+  PageTheme.register(inputBox);
   Object.assign(inputBox.style, {
     position: 'fixed',
     top: '20px',
     left: '20px',
     width: '350px',
     height: '60px',
-    background: 'rgba(200, 255, 200, 0.5)',
-    border: '1px solid #ccc',
+    background: 'var(--coco-input-bg)',
+    color: 'var(--coco-text)',
+    colorScheme: 'var(--coco-scheme)',
+    border: '1px solid var(--coco-border)',
     borderRadius: '8px',
     boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
     zIndex: '10001',
@@ -1585,14 +1677,17 @@ const createTranslationBoxes = () => {
   // 建立翻譯結果顯示區域
   translationBox = document.createElement('div');
   translationBox.id = 'translation-box';
+  PageTheme.register(translationBox);
   Object.assign(translationBox.style, {
     position: 'fixed',
     top: '90px',
     left: '20px',
     width: '350px',
     height: '100px',
-    background: 'rgba(240,255,240,0.5)',
-    border: '1px solid #ccc',
+    background: 'var(--coco-output-bg)',
+    color: 'var(--coco-text)',
+    colorScheme: 'var(--coco-scheme)',
+    border: '1px solid var(--coco-border)',
     borderRadius: '8px',
     boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
     zIndex: '10001',
@@ -1807,6 +1902,7 @@ chrome.storage.onChanged.addListener((changes, namespace) => {
     if (!isEnabled) removeAllTranslations();
   }
   if (changed('myLang')) uiLanguage = changes.myLang.newValue || 'zh';
+  if (changed('uiTheme')) PageTheme.setMode(changes.uiTheme.newValue);
   if (changed('targetLanguage')) targetLanguage = changes.targetLanguage.newValue || 'zh-TW';
   if (changed('inputTargetLanguage')) inputTargetLanguage = changes.inputTargetLanguage.newValue || 'en';
   if (changed('triggerKey')) triggerKey = changes.triggerKey.newValue || 'ControlRight';
@@ -1821,97 +1917,152 @@ chrome.storage.onChanged.addListener((changes, namespace) => {
   }
   if (changed('enableSelectionButton')) applySelectionButtonSetting(changes.enableSelectionButton.newValue !== false);
   if (changed('enableFloatingButton')) applyFloatingButtonSetting(changes.enableFloatingButton.newValue !== false);
+  if (changed('youTubeSubtitleMode')) YouTubeSubtitles.setMode(changes.youTubeSubtitleMode.newValue);
   if (changed('enableYouTubeSubtitles')) YouTubeSubtitles.setEnabled(changes.enableYouTubeSubtitles.newValue === true);
 });
 
 // ---------------- YouTube 雙語字幕 ----------------
-// 讀 YouTube 畫面上正在顯示的字幕，一行一行翻好，顯示在原字幕上方。
+// YouTube 原本的 CC 字幕改成透明（還在背景更新，讓我們讀；也還拖得動），
+// 在原本的位置顯示「一個」字幕框：原文＋譯文，或只顯示譯文。
 // 用整頁翻譯的來源（預設 Google，不耗 AI 額度）；每行翻過就快取，自動產生的滾動字幕也不會一直重翻
 const YouTubeSubtitles = (() => {
   const isYouTube = /(^|\.)youtube\.com$/.test(location.hostname);
   const PLAYER_SELECTOR = '#movie_player, .html5-video-player';
   const CAPTION_WINDOW_SELECTOR = '.ytp-caption-window-container .caption-window';
+  const HIDE_NATIVE_STYLE_ID = 'coco-yt-hide-native';
   const THROTTLE_MS = 600;
   const cache = new Map();
   let enabled = false;
+  let mode = 'bilingual';          // bilingual：原文＋譯文；translation：只顯示譯文
   let player = null;
   let observer = null;
-  let overlay = null;
+  let box = null;
   let pollTimer = null;
   let throttleTimer = null;
+  let frame = null;
   let lastRun = 0;
   let renderId = 0;
+  let lastTranslated = '';
+
+  const normalize = text => text.replace(/\s+/g, '');
 
   const captionLines = () => [...document.querySelectorAll(`${CAPTION_WINDOW_SELECTOR} .caption-visual-line`)]
     .map(line => line.textContent.replace(/\s+/g, ' ').trim())
     .filter(Boolean);
 
-  const ensureOverlay = () => {
-    if (overlay && overlay.isConnected) return overlay;
-    overlay = document.createElement('div');
-    overlay.id = 'coco-yt-subtitle';
-    Object.assign(overlay.style, {
+  // 原本的字幕只是變透明：YouTube 照樣更新內容，使用者也照樣能拖曳它的位置
+  const hideNativeCaptions = hide => {
+    const existing = document.getElementById(HIDE_NATIVE_STYLE_ID);
+    if (!hide) {
+      existing?.remove();
+      return;
+    }
+    if (existing) return;
+    const style = document.createElement('style');
+    style.id = HIDE_NATIVE_STYLE_ID;
+    style.textContent = '.ytp-caption-window-container { opacity: 0 !important; }';
+    (document.head || document.documentElement).appendChild(style);
+  };
+
+  const ensureBox = () => {
+    if (box && box.isConnected) return box;
+    box = document.createElement('div');
+    box.id = 'coco-yt-subtitle';
+    Object.assign(box.style, {
       position: 'absolute',
-      left: '50%',
       transform: 'translateX(-50%)',
       maxWidth: '90%',
-      padding: '2px 8px',
+      padding: '0.15em 0.5em',
       background: 'rgba(8, 8, 8, 0.75)',
       color: '#fff',
       textAlign: 'center',
-      lineHeight: '1.3',
-      borderRadius: '2px',
-      pointerEvents: 'none',
+      lineHeight: '1.35',
+      borderRadius: '4px',
+      pointerEvents: 'none',       // 滑鼠穿透到下面透明的原字幕，拖曳照樣有效
       zIndex: '60',
       display: 'none',
       whiteSpace: 'pre-line'
     });
-    player.appendChild(overlay);
-    return overlay;
+    const original = document.createElement('div');
+    original.className = 'coco-yt-original';
+    Object.assign(original.style, { color: '#ddd', fontSize: '0.85em' });
+    const translated = document.createElement('div');
+    translated.className = 'coco-yt-translated';
+    box.append(original, translated);
+    player.appendChild(box);
+    return box;
+  };
+
+  // 每一幀跟著原字幕的位置走（使用者拖曳、控制列出現時 YouTube 會移動它）
+  const followNativePosition = () => {
+    frame = null;
+    if (!box || box.style.display === 'none' || !player) return;
+    const captionWindow = document.querySelector(CAPTION_WINDOW_SELECTOR);
+    if (captionWindow) {
+      const playerRect = player.getBoundingClientRect();
+      const captionRect = captionWindow.getBoundingClientRect();
+      box.style.left = `${captionRect.left + captionRect.width / 2 - playerRect.left}px`;
+      box.style.bottom = `${Math.max(0, playerRect.bottom - captionRect.bottom)}px`;
+      // 字體大小、字型都跟原字幕一樣（使用者在 YouTube 設定的字幕樣式照樣有效）
+      const segment = captionWindow.querySelector('.ytp-caption-segment');
+      if (segment) {
+        const style = getComputedStyle(segment);
+        box.style.fontSize = style.fontSize;
+        box.style.fontFamily = style.fontFamily;
+      }
+    }
+    frame = requestAnimationFrame(followNativePosition);
   };
 
   const hide = () => {
-    if (overlay) overlay.style.display = 'none';
+    if (box) box.style.display = 'none';
   };
 
-  // 放在原字幕正上方，字體大小跟原字幕一樣
-  const position = () => {
-    const captionWindow = document.querySelector(CAPTION_WINDOW_SELECTOR);
-    const segment = document.querySelector(`${CAPTION_WINDOW_SELECTOR} .ytp-caption-segment`);
-    if (!captionWindow || !player) return false;
-    const playerRect = player.getBoundingClientRect();
-    const captionRect = captionWindow.getBoundingClientRect();
-    overlay.style.bottom = `${Math.max(0, playerRect.bottom - captionRect.top + 4)}px`;
-    overlay.style.fontSize = segment ? getComputedStyle(segment).fontSize : '18px';
-    return true;
+  const show = (lines, pending) => {
+    const original = lines.join('\n');
+    const translations = lines
+      .map(line => cache.get(line))
+      .filter((text, i) => text && normalize(text) !== normalize(lines[i]));
+    // 新的一句還在翻，先留著上一句的譯文，免得一直閃
+    let translated = translations.join('\n');
+    if (!translated && pending) translated = lastTranslated;
+    if (translated) lastTranslated = translated;
+
+    ensureBox();
+    const [originalEl, translatedEl] = box.children;
+    if (mode === 'translation') {
+      // 原字幕藏起來了，翻不出來（或本來就是目標語言）時至少要顯示原文
+      originalEl.textContent = '';
+      translatedEl.textContent = translated || original;
+    } else {
+      originalEl.textContent = original;
+      translatedEl.textContent = translated;
+    }
+    originalEl.style.display = originalEl.textContent ? 'block' : 'none';
+    translatedEl.style.display = translatedEl.textContent ? 'block' : 'none';
+    if (box.style.display === 'none') {
+      box.style.display = 'block';
+      frame ??= requestAnimationFrame(followNativePosition);
+    }
   };
 
   const render = async () => {
     lastRun = Date.now();
     const lines = captionLines();
-    if (!lines.length) {
+    if (!enabled || !lines.length) {
       hide();
       return;
     }
     const id = ++renderId;
     const missing = lines.filter(line => !cache.has(line));
-    if (missing.length) {
-      const { translations, error } = await requestTranslations('page', missing, targetLanguage);
-      missing.forEach((line, i) => {
-        if (!(error && translations[i] === line)) cache.set(line, translations[i]);
-      });
-      if (id !== renderId) return;   // 等翻譯的時候字幕又換了，交給新的那一輪
-    }
-    // 跟原文一樣（例如本來就是目標語言）就不重複顯示
-    const translated = lines
-      .map(line => cache.get(line))
-      .filter((text, i) => text && text.replace(/\s+/g, '') !== lines[i].replace(/\s+/g, ''));
-    if (!enabled || !translated.length) {
-      hide();
-      return;
-    }
-    ensureOverlay().textContent = translated.join('\n');
-    if (position()) overlay.style.display = 'block';
+    show(lines, missing.length > 0);
+    if (!missing.length) return;
+
+    const { translations, error } = await requestTranslations('page', missing, targetLanguage, 'text', { quiet: true });
+    missing.forEach((line, i) => {
+      if (!(error && translations[i] === line)) cache.set(line, translations[i]);
+    });
+    if (id === renderId && enabled) show(lines, false);
   };
 
   // 字幕一變就更新；逐字滾動的自動字幕最多每 0.6 秒翻一次
@@ -1927,7 +2078,7 @@ const YouTubeSubtitles = (() => {
     if (!found || found === player) return;
     observer?.disconnect();
     player = found;
-    overlay = null;
+    box = null;
     observer = new MutationObserver(mutations => {
       const captionChanged = mutations.some(m => {
         const target = m.target.nodeType === Node.TEXT_NODE ? m.target.parentElement : m.target;
@@ -1940,14 +2091,19 @@ const YouTubeSubtitles = (() => {
 
   const setEnabled = value => {
     enabled = !!value && isYouTube;
+    hideNativeCaptions(enabled);
     if (!enabled) {
       observer?.disconnect();
       observer = null;
       player = null;
       clearInterval(pollTimer);
       pollTimer = null;
-      overlay?.remove();
-      overlay = null;
+      clearTimeout(throttleTimer);
+      if (frame) cancelAnimationFrame(frame);
+      frame = null;
+      box?.remove();
+      box = null;
+      lastTranslated = '';
       return;
     }
     // YouTube 是單頁應用程式，播放器可能晚一點才出現，也可能換掉，定期檢查
@@ -1956,11 +2112,19 @@ const YouTubeSubtitles = (() => {
     schedule();
   };
 
-  return { setEnabled, isYouTube };
+  const setMode = value => {
+    mode = value === 'translation' ? 'translation' : 'bilingual';
+    if (enabled) schedule();
+  };
+
+  return { setEnabled, setMode, isYouTube };
 })();
 
 if (YouTubeSubtitles.isYouTube) {
-  chrome.storage.local.get(['enableYouTubeSubtitles'], data => YouTubeSubtitles.setEnabled(data.enableYouTubeSubtitles === true));
+  chrome.storage.local.get(['enableYouTubeSubtitles', 'youTubeSubtitleMode'], data => {
+    YouTubeSubtitles.setMode(data.youTubeSubtitleMode);
+    YouTubeSubtitles.setEnabled(data.enableYouTubeSubtitles === true);
+  });
 }
 
 // 告訴 background 這是剛載入的新頁面，右鍵選單的整頁翻譯狀態要重設

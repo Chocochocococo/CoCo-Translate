@@ -1,237 +1,104 @@
 <!DOCTYPE html>
-<html>
+<html lang="zh-Hant">
 <head>
   <meta charset="UTF-8">
-  <title>CoCo Translate Settings</title>
+  <title>CoCo Translate</title>
+  <!-- theme.js 要最先跑，打開時才不會先閃一下白色 -->
+  <script src="theme.js"></script>
+  <link rel="stylesheet" href="theme.css">
   <link rel="stylesheet" href="popup.css">
 </head>
 <body>
-  <div class="container">
-    <div class="tab-buttons">
-      <button id="tabGeneral" class="active">Settings</button>
-      <button id="tabRegex">Edit Regex Patterns</button>
-      <button id="tabAPI">API Settings</button>
+  <header>
+    <img src="icons/icon-48.png" alt="" class="logo">
+    <div class="title-block">
+      <div class="title" data-i18n="appName">CoCo Translate</div>
+      <div id="siteHost" class="site"></div>
     </div>
-    
-    <!-- 一般設定分頁 -->
-    <div id="contentGeneral" class="tab-content active">
-      <div class="section">
-        <label id="uiLanguageLabel" for="languageSelector">UI Language:</label>
-        <select id="languageSelector">
-          <option value="en">English</option>
-          <option value="zh">中文</option>
+    <button id="themeToggle" class="icon-btn" type="button">
+      <svg class="theme-icon theme-auto" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 4a8 8 0 0 1 0 16z" fill="currentColor"/></svg>
+      <svg class="theme-icon theme-light" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4.5" fill="currentColor"/><g stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2.5v2.5M12 19v2.5M2.5 12H5M19 12h2.5M5.3 5.3l1.8 1.8M16.9 16.9l1.8 1.8M5.3 18.7l1.8-1.8M16.9 7.1l1.8-1.8"/></g></svg>
+      <svg class="theme-icon theme-dark" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z" fill="currentColor"/></svg>
+    </button>
+    <button id="openOptionsBtn" class="icon-btn" type="button" data-i18n-title="openSettings">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M19.14 12.94c.04-.3.06-.61.06-.94s-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.49.49 0 0 0-.59-.22l-2.39.96a7 7 0 0 0-1.62-.94l-.36-2.54a.48.48 0 0 0-.48-.41h-3.84a.47.47 0 0 0-.47.41l-.36 2.54a7.3 7.3 0 0 0-1.62.94l-2.39-.96a.48.48 0 0 0-.59.22L2.74 8.87a.47.47 0 0 0 .12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54a7 7 0 0 0 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32a.47.47 0 0 0-.12-.61zM12 15.6a3.6 3.6 0 1 1 0-7.2 3.6 3.6 0 0 1 0 7.2z"/></svg>
+    </button>
+  </header>
+
+  <button id="pageToggleBtn" class="primary" type="button">
+    <span id="pageToggleLabel" data-i18n="translatePage">翻譯此頁</span>
+    <small id="pageShortcut"></small>
+  </button>
+
+  <div id="displayMode" class="segmented display-mode">
+    <button type="button" data-value="replace" data-i18n="displayReplace">取代原文</button>
+    <button type="button" data-value="bilingual" data-i18n="displayBilingual">雙語對照</button>
+  </div>
+
+  <div class="card">
+    <label class="row">
+      <span class="icon">🌐</span>
+      <span class="label" data-i18n="pageSource">翻譯來源</span>
+      <span class="pill">
+        <select id="pageSource">
+          <option value="google" data-i18n="sourceGoogle">Google 翻譯</option>
+          <option value="google-api" data-i18n="sourceGoogleApi">Google Cloud API</option>
+          <option value="bing" data-i18n="sourceBing">Bing 翻譯</option>
+          <option value="deepl-api" data-i18n="sourceDeepL">DeepL API</option>
+          <option value="llm" data-i18n="sourceLlm">AI 翻譯</option>
         </select>
-        <label class="label">
-          <input type="checkbox" id="alwaysTranslateCheckbox" class="input-checkbox">
-          <span id="alwaysTranslateLabel">Always translate this site</span>
-          <button id="manageSitesBtn" class="link-btn" type="button">Manage sites</button>
-          <button id="openGlossaryBtn" class="link-btn" type="button">Glossary</button>
-          <button id="openVocabularyBtn" class="link-btn" type="button">Vocabulary</button>
-        </label>
-        <label class="label">
-          <input type="checkbox" id="showOriginalTooltip" class="input-checkbox">
-          <span id="showOriginalTooltipLabel">Show Original Text Tooltip in Page Translate</span>
-        </label>
-        <label class="label">
-          <input type="checkbox" id="enableFloatingButton" class="input-checkbox">
-          <span id="enableFloatingButtonLabel">Enable Input Translate Button</span>
-        </label>
-        <label class="label">
-          <input type="checkbox" id="enableSelectionButton" class="input-checkbox">
-          <span id="enableSelectionButtonLabel">Enable Selection Translation Button</span>
-        </label>
-        <label class="label">
-          <input type="checkbox" id="enableYouTubeSubtitles" class="input-checkbox">
-          <span id="enableYouTubeSubtitlesLabel">YouTube bilingual subtitles</span>
-        </label>
-        <label class="label">
-          <input type="checkbox" id="enableCustomRegex" class="input-checkbox" checked>
-          <span id="enableCustomRegexLabel">Enable Custom Regex</span>
-        </label>
-        <label class="label">
-          <input type="checkbox" id="useDiskCache" class="input-checkbox">
-          <span id="useDiskCacheLabel">Enable local cached translation</span>
-        </label>
-      </div>  
-      <div class="section inline-section">
-        <div class="column">
-          <label id="translationSourceLabel" for="translationSource">Translation Source:</label>
-          <button id="openApiModalBtn" class="btn" style="width:200px; font-size: 14px; color: black; background-color: white; text-align: left; border: 1px solid #d5d5d5;">Click to open settings</button>
-        </div>
-        <div class="column">
-          <label id="contextMenuLabel" for="radio">Context Menu:</label>
-          <select id="radio" name="contextMenuMode" class="input">
-            <option value="1">CoCo Menu</option>
-            <option value="2">Both Menu</option>
-            <option value="3">Default Menu</option>
-          </select>
-        </div>
-      </div>
-      <div class="section inline-section">
-        <div class="column">
-          <label id="pageDisplayModeLabel" for="pageDisplayMode">Page Translation:</label>
-          <select id="pageDisplayMode" class="input">
-            <option value="replace">Replace Original</option>
-            <option value="bilingual">Bilingual</option>
-          </select>
-        </div>
-      </div>
-      <div class="section inline-section">
-        <div class="column">
-          <label id="targetLanguageLabel" for="targetLanguage">Target Language:</label>
-          <select id="targetLanguage" class="input">
-            <option value="zh-TW">zh-TW</option>
-            <option value="en">EN</option>
-            <option value="ja">JA</option>
-            <option value="ko">KO</option>
-          </select>
-        </div>
-        <div class="column">
-          <label id="inputTargetLanguageLabel" for="inputTargetLanguage">Input Target Language:</label>
-          <select id="inputTargetLanguage" class="input">
-            <option value="en">EN</option>
-            <option value="zh-TW">zh-TW</option>
-            <option value="ja">JA</option>
-            <option value="ko">KO</option>
-          </select>
-        </div>
-      </div>
-      <div class="section inline-section">
-        <div class="column">
-          <label id="triggerKeyLabel" for="triggerKey" class="label">Trigger Key:</label>
-          <input type="text" id="triggerKey" class="input2" placeholder="Press a key to set trigger">
-        </div>
-        <div class="column">
-          <label id="toggleTranslationLabel" for="toggleTranslation" class="label">Enable Trigger:</label>
-          <select id="toggleTranslation" class="input">
-            <option value="true">ON</option>
-            <option value="false">OFF</option>
-          </select>
-        </div>
-      </div>
-      <div class="buttons">
-        <button id="saveBtn" class="btn">Save Settings</button>
-        <button id="clearBtn" class="btn secondary">Clear Triggered</button>
-      </div>
-      <div class="buttons">
-        <button id="translatePageBtn" class="btn">Translate Page</button>
-        <button id="restorePageBtn" class="btn secondary">Restore Page</button>
-      </div>
-      <div class="shortcut-row">
-        <span id="shortcutLabel">Shortcut:</span>
-        <kbd id="shortcutDisplay">—</kbd>
-        <button id="openShortcutSettingsBtn" class="btn secondary">Set Shortcuts</button>
-      </div>
-    </div>
-    
-    <!-- 正規表達式編輯器分頁 -->
-    <div id="contentRegex" class="tab-content">
-      <div id="regexListContainer">
-        <div id="modalPatternList" class="pattern-list"></div>
-      </div>
-      <button id="addPatternBtn" class="btn">Add New Pattern</button>
-      <div class="buttons">
-        <button id="exportRegex" class="btn">Export</button>
-        <button id="importRegex" class="btn">Import</button>
-      </div>
-    </div>
-    
-    <!-- API Settings 分頁 -->
-    <div id="contentAPI" class="tab-content">
-      <div class="section inline-section2">
-        <label id= "googleApiKeyNAME" for="googleApiKey">Cloud API Key:</label>
-        <input type="password" id="googleApiKey" class="input" placeholder="Enter your Cloud API key">
-        <div class="buttons2">
-          <button id="saveApiKeyBtn" class="btn">Save</button>
-          <button id="deleteApiKeyBtn" class="btn secondary">Delete</button>
-        </div>
-      </div>
-      <div class="section inline-section2">
-        <label  id="deepLApiKeyNAME" for="deepLApiKey">DeepL API Key:</label>
-        <input type="password" id="deepLApiKey" class="input" placeholder="Enter your DeepL API key">
-        <div class="buttons2">
-          <button id="saveDeepLApiKeyBtn" class="btn">Save API Key</button>
-          <button id="deleteDeepLApiKeyBtn" class="btn secondary">Delete API Key</button>
-        </div>
-      </div>
-      <div class="section inline-section">
-        <label id="deepLAccountTypelabel" for="deepLAccountType">DeepL Account Type:</label>
-        <select id="deepLAccountType" class="input">
-          <option value="free">Free</option>
-          <option value="pro">Pro (Subscription)</option>
+      </span>
+    </label>
+    <label class="row">
+      <span class="icon">🎯</span>
+      <span class="label" data-i18n="targetLanguage">翻譯成</span>
+      <span class="pill">
+        <select id="targetLanguage">
+          <option value="zh-TW" data-i18n="langZhTW">繁體中文</option>
+          <option value="en" data-i18n="langEn">英文</option>
+          <option value="ja" data-i18n="langJa">日文</option>
+          <option value="ko" data-i18n="langKo">韓文</option>
         </select>
+      </span>
+    </label>
+    <p id="sourceWarning" class="warning hidden"></p>
+  </div>
+
+  <div class="card">
+    <div class="row">
+      <span class="icon">⭐</span>
+      <span class="label"><span data-i18n="alwaysTranslate">總是翻譯此網站</span><small id="alwaysTranslateHost"></small></span>
+      <span class="switch"><input type="checkbox" id="alwaysTranslateCheckbox"><span class="slider"></span></span>
+    </div>
+    <div class="row">
+      <span class="icon">🖱️</span>
+      <span class="label"><span data-i18n="mouseTrigger">滑鼠觸發翻譯</span><small id="triggerHint"></small></span>
+      <span class="switch"><input type="checkbox" id="toggleTranslation"><span class="slider"></span></span>
+    </div>
+    <div class="row" data-i18n-title="youTubeSubtitlesHint">
+      <span class="icon">🎬</span>
+      <span class="label" data-i18n="youTubeSubtitles">YouTube 字幕</span>
+      <div id="youTubeSubtitleMode" class="segmented small">
+        <button type="button" data-value="bilingual" data-i18n="youTubeModeBilingual">雙語</button>
+        <button type="button" data-value="translation" data-i18n="youTubeModeTranslation">只譯文</button>
       </div>
-      <!-- AI 翻譯（OpenAI 相容：Ollama Cloud / OpenRouter / Mistral / 本機 Ollama / 自訂） -->
-      <div class="section llm-section">
-        <label id="llmSectionTitle" class="label">AI Translation (LLM)</label>
-        <div class="section inline-section">
-          <label id="llmProviderLabel" for="llmProvider">Provider:</label>
-          <select id="llmProvider" class="input">
-            <option value="ollama-cloud">Ollama Cloud</option>
-            <option value="openrouter">OpenRouter</option>
-            <option value="gemini">Google Gemini</option>
-            <option value="groq">Groq</option>
-            <option value="mistral">Mistral</option>
-            <option value="ollama-local">Ollama (Local)</option>
-            <option value="custom">Custom (OpenAI compatible)</option>
-          </select>
-        </div>
-        <p id="llmHint" class="hint"></p>
-        <div class="section inline-section2">
-          <label id="llmBaseUrlLabel" for="llmBaseUrl">API Base URL:</label>
-          <input type="text" id="llmBaseUrl" class="input">
-        </div>
-        <div class="section inline-section2">
-          <label id="llmApiKeyLabel" for="llmApiKey">API Key:</label>
-          <input type="password" id="llmApiKey" class="input" placeholder="Enter your API key">
-        </div>
-        <div class="section inline-section2">
-          <label id="llmModelLabel" for="llmModel">Model:</label>
-          <input type="text" id="llmModel" class="input" list="llmModelList" autocomplete="off">
-          <datalist id="llmModelList"></datalist>
-          <div class="buttons2">
-            <button id="fetchLlmModelsBtn" class="btn secondary">Load Models</button>
-          </div>
-        </div>
-        <div class="buttons2">
-          <button id="saveLlmBtn" class="btn">Save</button>
-          <button id="deleteLlmKeyBtn" class="btn secondary">Delete API Key</button>
-        </div>
-      </div>
-      <!-- 新增自訂 prompt 區塊（AI 翻譯用） -->
-      <div class="section">
-        <div class="section inline-section">
-        <label id="promptNametitle" for="promptName">Prompt Name:</label>
-        <input type="text" id="promptName" class="input2" placeholder="Enter prompt name">
-        <div class="buttons2">
-          <button id="saveCustomPromptBtn" class="btn">Save Prompt</button>
-        </div>
-        </div>
-        <div class="section inline-section">
-        <label id="customPrompttitle" for="customPrompt">Custom Prompt:</label>
-        <textarea id="customPrompt" class="input-large" placeholder="Enter your custom translation prompt"></textarea>
-        </div>
-        <div class="section inline-section">
-        <label id="promptSelecttitle" for="promptSelect">Select Prompt:</label>
-        <select id="promptSelect" class="input2"></select>
-        <div class="buttons2">
-          <button id="deleteCustomPromptBtn" class="btn secondary">Delete Prompt</button>
-        </div>
-       </div>
-      </div>
-      <div class="buttons">
-        <button id="clearCacheBtn" class="btn secondary">Clear Cache</button>
-        <!-- <button id="editTranslationsBtn" class="btn">Edit Stored Translations</button> -->
-      </div>
-      <div class="section">
-        <p id="cacheSizeDisplay" style="margin-top: 10px; font-weight: bold;">
-          Cache Size: Calculating...
-        </p>
-      </div>
+      <span class="switch"><input type="checkbox" id="enableYouTubeSubtitles"><span class="slider"></span></span>
     </div>
   </div>
+
+  <footer>
+    <div class="links">
+      <button id="openGlossaryBtn" class="link" type="button" data-i18n="glossary">術語表</button>
+      <button id="openVocabularyBtn" class="link" type="button" data-i18n="vocabulary">生字本</button>
+      <button id="manageSitesBtn" class="link" type="button" data-i18n="sites">網站清單</button>
+      <button id="clearBtn" class="link" type="button" data-i18n="clearTriggered">清除觸發譯文</button>
+    </div>
+    <span id="version" class="version"></span>
+  </footer>
+
   <script src="language.js"></script>
   <script src="sitePatterns.js"></script>
+  <script src="ui.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

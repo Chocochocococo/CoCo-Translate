@@ -1,51 +1,79 @@
-/* 設定頁 - 幹，終於有地方放這麼多東西了 */
+/* 設定頁 - 幹，終於有地方放這麼多東西了。共用的卡片、開關都在 theme.css */
 body {
-  font-family: Arial, sans-serif;
-  margin: 0;
   display: flex;
   min-height: 100vh;
-  background-color: #f9f9f9; /* 他媽的，跟 popup 同一個底色 */
-  color: #333;
-  line-height: 1.5;
 }
 
+/* ---------- 左邊導覽 ---------- */
 .side-nav {
-  width: 200px;
-  flex-shrink: 0;
-  padding: 20px 12px;
-  background: #fff;
-  border-right: 1px solid #e0e0e0;
+  position: sticky;
+  top: 0;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
+  width: 230px;
+  height: 100vh;
+  flex-shrink: 0;
+  padding: 20px 12px;
 }
 
-.side-nav h1 {
-  font-size: 18px;
-  margin: 0 8px 12px;
-  color: #2c3e50;
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 8px 16px;
+  font-size: 16px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.brand img {
+  width: 32px;
+  height: 32px;
 }
 
 .side-nav a {
-  padding: 8px 10px;
-  border-radius: 6px;
-  color: #333;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border-radius: 999px;
+  color: var(--text);
   text-decoration: none; /* 靠北，底線好醜 */
 }
 
 .side-nav a:hover {
-  background: #f0f4f8;
+  background: var(--surface-2);
 }
 
 .side-nav a.active {
-  background: #3498db;
-  color: #fff;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 700;
 }
 
+.side-nav a:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.nav-icon {
+  width: 20px;
+  text-align: center;
+}
+
+.version {
+  margin: auto 12px 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* ---------- 內容 ---------- */
 main {
   flex: 1;
-  padding: 24px 32px;
-  max-width: 820px;
+  min-width: 0;
+  max-width: 760px;
+  padding: 28px 32px 48px;
 }
 
 .panel {
@@ -56,82 +84,140 @@ main {
   display: block;
 }
 
-h2 {
-  font-size: 22px;
-  margin: 0 0 8px;
-  color: #2c3e50;
+h1 {
+  margin: 0 0 16px;
+  font-size: 24px;
 }
 
 .description {
-  margin: 0 0 12px;
-  color: #555;
+  margin: -8px 0 16px;
+  color: var(--muted);
 }
 
-.examples {
-  margin: 0 0 16px;
-  padding-left: 20px;
-  color: #555;
-  font-size: 14px;
+.card {
+  margin-bottom: 14px;
 }
 
-code {
-  background: #eef2f5;
-  padding: 1px 5px;
-  border-radius: 4px;
+.card.padded {
+  padding: 14px;
 }
 
-.row {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  margin-bottom: 12px;
+.card-title + .row {
+  border-top: none;
+}
+
+.card .row {
   flex-wrap: wrap;
 }
 
-.text-input,
-select.text-input {
-  padding: 7px 9px;
-  font-size: 14px;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  min-width: 180px;
-  box-sizing: border-box;
+.row small.wrap {
+  white-space: normal;
 }
 
-.btn {
-  padding: 7px 16px;
-  font-size: 14px;
-  color: #fff;
-  background-color: #3498db;
-  border: none;
-  border-radius: 4px;
+.card-foot {
+  padding: 0 14px 12px;
+}
+
+.card-foot .warning {
+  margin-top: 6px;
+}
+
+.pill select {
+  max-width: 260px;
+}
+
+/* 欄位：標題在上、輸入框在下 */
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 14px;
+  border-top: 1px solid var(--border);
+}
+
+.field > label {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.inline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.inline .text-input {
+  flex: 1;
+  width: auto;
+  min-width: 160px;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px 14px 14px;
+  border-top: 1px solid var(--border);
+}
+
+.actions.plain {
+  padding: 0;
+  margin-bottom: 14px;
+  border-top: none;
+}
+
+.key-input {
+  width: 150px;
+  text-align: center;
   cursor: pointer;
 }
 
-.btn:hover {
-  background-color: #2980b9;
+.key-input.listening {
+  border-color: var(--accent);
+  background: var(--accent-soft);
 }
 
-.btn.secondary {
-  background-color: #95a5a6; /* 他媽的，次要按鈕灰一點 */
+.hint.spaced {
+  margin: 0 0 14px;
 }
 
-.btn.secondary:hover {
-  background-color: #7f8c8d;
+.card.padded .hint {
+  margin-bottom: 10px;
 }
 
-.btn.small {
-  padding: 3px 10px;
+.card.padded .hint:last-child {
+  margin: 10px 0 0;
+}
+
+.examples {
+  margin: 0 0 12px;
+  padding-left: 20px;
+  color: var(--muted);
+}
+
+code {
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: var(--surface-2);
+  color: var(--text);
   font-size: 13px;
 }
 
+.glossary-form .text-input {
+  min-width: 120px;
+}
+
+.arrow {
+  color: var(--muted);
+}
+
+/* ---------- 清單（網站、術語、生字、正規表達式） ---------- */
 .item-list {
-  list-style: none;
   margin: 0;
   padding: 0;
-  border: 1px solid #e0e0e0;
-  border-radius: 6px;
-  background: #fff;
+  list-style: none;
 }
 
 .item-list:empty {
@@ -142,12 +228,11 @@ select.text-input {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 8px 12px;
-  border-bottom: 1px solid #f0f0f0;
+  padding: 10px 14px;
 }
 
-.item-list li:last-child {
-  border-bottom: none;
+.item-list li + li {
+  border-top: 1px solid var(--border);
 }
 
 .item-list li .grow {
@@ -156,12 +241,50 @@ select.text-input {
   overflow-wrap: anywhere;
 }
 
-.empty {
-  color: #999;
-  font-style: italic;
+.item-list a {
+  color: var(--accent);
 }
 
-.hint {
-  font-size: 13px;
-  color: #777;
+.card .empty {
+  margin: 0;
+  padding: 16px 14px;
+}
+
+/* 正規表達式：一列兩個輸入框 */
+.pattern-item .text-input {
+  flex: 1;
+  min-width: 0;
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+
+/* ---------- 窄螢幕：導覽改成上方橫條 ---------- */
+@media (max-width: 720px) {
+  body {
+    display: block;
+  }
+
+  .side-nav {
+    position: sticky;
+    z-index: 1;
+    flex-direction: row;
+    width: auto;
+    height: auto;
+    padding: 10px 12px;
+    overflow-x: auto;
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .brand,
+  .version {
+    display: none;
+  }
+
+  .side-nav a {
+    flex-shrink: 0;
+  }
+
+  main {
+    padding: 20px 16px 40px;
+  }
 }

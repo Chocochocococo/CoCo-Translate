@@ -142,6 +142,9 @@ const asyncHandlers = {
     }
   },
 
+  // popup 的大按鈕要知道這個分頁翻了沒（翻譯此頁 ⇄ 顯示原文）
+  GET_PAGE_STATUS: async message => ({ isTranslated: await getPageStatus(message.tabId) }),
+
   GET_CACHE_SIZE: async () => ({ size: await TranslationCache.getCacheSize() }),
 
   CLEAR_TRANSLATION_CACHE: async () => {

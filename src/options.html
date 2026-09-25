@@ -9,6 +9,7 @@
   <nav class="side-nav">
     <h1>CoCo Translate</h1>
     <a href="#sites" id="navSites" data-section="sites">Sites</a>
+    <a href="#glossary" id="navGlossary" data-section="glossary">Glossary</a>
     <a href="#regex" id="navRegex" data-section="regex">Regex</a>
   </nav>
 
@@ -30,6 +31,32 @@
       </div>
       <ul id="siteList" class="item-list"></ul>
       <p id="siteListEmpty" class="empty">No sites yet.</p>
+    </section>
+
+    <!-- 術語表 -->
+    <section id="glossary" class="panel">
+      <h2 id="glossaryTitle">Glossary</h2>
+      <p id="glossaryDescription" class="description">
+        Names and terms that should always be translated the same way.
+      </p>
+      <p id="glossaryHint" class="hint">
+        AI translation gets the glossary in its prompt; Google / Bing / DeepL receive the fixed translation marked as "do not translate".
+      </p>
+      <div class="row">
+        <input type="text" id="glossarySource" class="text-input" placeholder="Lin Feng">
+        <span>→</span>
+        <input type="text" id="glossaryTarget" class="text-input" placeholder="林楓">
+        <input type="text" id="glossarySite" class="text-input" placeholder="*.novel-site.com">
+        <button id="addGlossaryBtn" class="btn">Add</button>
+      </div>
+      <p id="glossarySiteHint" class="hint">Leave the site empty to use the entry everywhere.</p>
+      <ul id="glossaryList" class="item-list"></ul>
+      <p id="glossaryEmpty" class="empty">No entries yet.</p>
+      <div class="row" style="margin-top: 12px">
+        <button id="exportGlossaryBtn" class="btn secondary">Export</button>
+        <button id="importGlossaryBtn" class="btn secondary">Import</button>
+        <input type="file" id="importGlossaryFile" accept=".json" hidden>
+      </div>
     </section>
 
     <!-- 匯入正規表達式（Firefox 的 popup 一開檔案對話框就會關掉，所以放這裡） -->

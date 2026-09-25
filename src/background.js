@@ -3,6 +3,8 @@
 const BACKGROUND_LIBS = [
   'translationCache.js',
   'markup.js',
+  'sitePatterns.js',
+  'glossary.js',
   'postprocess.js',
   'rateLimiter.js',
   'translator.js',
@@ -115,7 +117,7 @@ const broadcastToTabs = async (message) => {
 
 // 需要非同步回覆的訊息：回傳 promise 的處理函式
 const asyncHandlers = {
-  TRANSLATE_BATCH: message => TranslationService.translate(message),
+  TRANSLATE_BATCH: (message, sender) => TranslationService.translate({ ...message, pageUrl: sender.tab?.url || '' }),
 
   LIST_LLM_MODELS: async message => {
     try {

@@ -159,9 +159,10 @@ class OpenAICompatibleTranslator {
       : '';
   }
 
-  async translateOne(text, targetLang, { html = false } = {}) {
+  async translateOne(text, targetLang, { html = false, glossary = [] } = {}) {
     const fullTargetLang = getLanguageFullName(targetLang);
-    const systemPrompt = `${this.buildBasePrompt(targetLang)}${this.markupInstructions(html)} Only return the translation, nothing else. Do not use any Markdown formatting.`;
+    const systemPrompt = `${this.buildBasePrompt(targetLang)}${this.markupInstructions(html)} Only return the translation, nothing else. Do not use any Markdown formatting.` +
+      Glossary.promptFor(glossary);
     const content = await this.chat([
       { role: 'system', content: systemPrompt },
       { role: 'user', content: `Translate the following into ${fullTargetLang}:\n${text}` }
@@ -169,7 +170,7 @@ class OpenAICompatibleTranslator {
     return PostProcess.cleanLLMOutput(content);
   }
 
-  async translateSegments(texts, targetLang, { html = false } = {}) {
+  async translateSegments(texts, targetLang, { html = false, glossary = [] } = {}) {
     const fullTargetLang = getLanguageFullName(targetLang);
     const systemPrompt =
       `${this.buildBasePrompt(targetLang)}${this.markupInstructions(html)}\n\n` +
@@ -177,7 +178,8 @@ class OpenAICompatibleTranslator {
       `Translate every segment into ${fullTargetLang}. ` +
       `Respond with only a JSON object {"segments": [...]} containing exactly ${texts.length} strings in the same order. ` +
       `Never merge, split, drop or reorder segments. If a segment should not be translated (code, URL, proper noun), copy it unchanged. ` +
-      `Do not use any Markdown formatting.`;
+      `Do not use any Markdown formatting.` +
+      Glossary.promptFor(glossary);
     const content = await this.chat([
       { role: 'system', content: systemPrompt },
       { role: 'user', content: JSON.stringify({ segments: texts }) }

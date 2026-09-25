@@ -369,6 +369,37 @@ try {
     const { siteTranslationList } = await sw.evaluate(() => chrome.storage.local.get('siteTranslationList'));
     assert.deepEqual(siteTranslationList, []);
   });
+  // 7-2-1. 設定頁：術語表
+  await options.goto(`chrome-extension://${extId}/options.html#glossary`);
+  await options.fill('#glossarySource', 'fox');
+  await options.fill('#glossaryTarget', '狐狸');
+  await options.click('#addGlossaryBtn');
+  await check('設定頁：新增術語表詞條', async () => {
+    await options.waitForFunction(() => document.querySelectorAll('#glossaryList li').length === 1, null, { timeout: 3000 });
+    assert.match(await options.textContent('#glossaryList li'), /fox → 狐狸/);
+  });
+  await page.bringToFront();
+  await page.evaluate(() => {
+    const p = document.createElement('p');
+    p.id = 'glossary-p';
+    p.textContent = 'A clever fox appeared';
+    document.body.prepend(p);
+    window.scrollTo(0, 0);
+  });
+  const beforeGlossary = llmRequests.length;
+  await page.hover('#glossary-p');
+  await page.keyboard.press('ControlRight');
+  await check('術語表：翻譯時把用到的詞條交給 AI', async () => {
+    await page.waitForFunction(() => document.querySelector('#glossary-p + .immersive-translation-container'), null, { timeout: 3000 });
+    const request = llmRequests.slice(beforeGlossary).find(r => r.messages[1].content.includes('clever fox'));
+    assert.ok(request, '應該有送出請求');
+    assert.match(request.messages[0].content, /- fox → 狐狸/);
+  });
+  await options.bringToFront();
+  await options.click('#glossaryList li button');
+  await check('設定頁：刪除術語表詞條', async () => {
+    await options.waitForFunction(() => document.querySelectorAll('#glossaryList li').length === 0, null, { timeout: 3000 });
+  });
   await options.close();
 
   // 7-3. popup 勾選框認得萬用字元規則

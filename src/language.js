@@ -37,6 +37,16 @@ const i18nStrings = {
       clearCacheBtnID: "Clear Cache",
       shortcutLabelID: "Shortcut:",
       manageSitesBtnID: "Manage sites",
+      openGlossaryBtnID: "Glossary",
+      navGlossaryID: "Glossary",
+      glossaryTitleID: "Glossary",
+      glossaryDescriptionID: "Names and terms that should always be translated the same way — character names, places, sects…",
+      glossaryHintID: "AI translation gets the glossary in its prompt; Google / Bing / DeepL receive the fixed translation marked as \"do not translate\".",
+      glossarySiteHintID: "Leave the site empty to use the entry everywhere, or enter a site rule such as *.novel-site.com.",
+      addGlossaryBtnID: "Add",
+      glossaryEmptyID: "No entries yet.",
+      exportGlossaryBtnID: "Export",
+      importGlossaryBtnID: "Import",
       navSitesID: "Sites",
       navRegexID: "Regex",
       sitesTitleID: "Always Translate These Sites",
@@ -105,6 +115,16 @@ const i18nStrings = {
       clearCacheBtnID: "清除快取",
       shortcutLabelID: "快捷鍵：",
       manageSitesBtnID: "管理網站清單",
+      openGlossaryBtnID: "術語表",
+      navGlossaryID: "術語表",
+      glossaryTitleID: "術語表",
+      glossaryDescriptionID: "每次都要翻成同一個譯名的人名、地名、門派……",
+      glossaryHintID: "AI 翻譯會把術語表寫進提示；Google / Bing / DeepL 會先把原文換成譯名，並標成不翻譯。",
+      glossarySiteHintID: "網站留空＝所有網站都套用，也可以填網站規則，例如 *.novel-site.com。",
+      addGlossaryBtnID: "新增",
+      glossaryEmptyID: "還沒有任何詞條。",
+      exportGlossaryBtnID: "匯出",
+      importGlossaryBtnID: "匯入",
       navSitesID: "網站清單",
       navRegexID: "正規表達式",
       sitesTitleID: "總是翻譯的網站",
@@ -150,6 +170,16 @@ const i18nStrings = {
     setText("clearCacheBtn", dict.clearCacheBtnID);
     setText("shortcutLabel", dict.shortcutLabelID);
     setText("manageSitesBtn", dict.manageSitesBtnID);
+    setText("openGlossaryBtn", dict.openGlossaryBtnID);
+    setText("navGlossary", dict.navGlossaryID);
+    setText("glossaryTitle", dict.glossaryTitleID);
+    setText("glossaryDescription", dict.glossaryDescriptionID);
+    setText("glossaryHint", dict.glossaryHintID);
+    setText("glossarySiteHint", dict.glossarySiteHintID);
+    setText("addGlossaryBtn", dict.addGlossaryBtnID);
+    setText("glossaryEmpty", dict.glossaryEmptyID);
+    setText("exportGlossaryBtn", dict.exportGlossaryBtnID);
+    setText("importGlossaryBtn", dict.importGlossaryBtnID);
     setText("navSites", dict.navSitesID);
     setText("navRegex", dict.navRegexID);
     setText("sitesTitle", dict.sitesTitleID);

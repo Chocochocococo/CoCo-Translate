@@ -128,6 +128,111 @@ function initSites() {
   });
 }
 
+// ---------------- 術語表 ----------------
+// 小工具：把 JSON 存成檔案下載
+function downloadFile(filename, content, type = 'application/json') {
+  const url = URL.createObjectURL(new Blob([content], { type }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function initGlossary() {
+  const source = document.getElementById('glossarySource');
+  const target = document.getElementById('glossaryTarget');
+  const site = document.getElementById('glossarySite');
+  const list = document.getElementById('glossaryList');
+  const empty = document.getElementById('glossaryEmpty');
+
+  const save = entries => chrome.storage.local.set({ glossary: entries });
+  const load = callback => chrome.storage.local.get(['glossary'], data => callback(data.glossary || []));
+
+  const render = entries => {
+    list.innerHTML = '';
+    entries.forEach((entry, index) => {
+      const text = document.createElement('span');
+      text.textContent = `${entry.source} → ${entry.target}`;
+      const scope = document.createElement('code');
+      scope.style.marginLeft = '8px';
+      scope.textContent = entry.site || t('所有網站', 'all sites');
+      list.appendChild(createListItem([text, scope], () => {
+        load(current => save(current.filter((_, i) => i !== index)));
+      }));
+    });
+    empty.style.display = entries.length ? 'none' : 'block';
+  };
+
+  const add = () => {
+    const entry = { source: source.value.trim(), target: target.value.trim(), site: '' };
+    if (!entry.source || !entry.target) {
+      showCustomWarning(t('原文和譯文都要填。', 'Please fill in both the term and its translation.'));
+      return;
+    }
+    if (site.value.trim()) {
+      entry.site = SitePatterns.normalize(site.value);
+      if (!entry.site) {
+        showCustomWarning(t('看不懂這個網站，請輸入像 example.com 或 *.example.com 這樣的格式，或留空。',
+          'Please enter a site like example.com or *.example.com, or leave it empty.'));
+        return;
+      }
+    }
+    load(entries => {
+      // 同一個網站範圍裡，同樣的原文只留一筆（新的蓋掉舊的）
+      const others = entries.filter(e => !(e.source === entry.source && (e.site || '') === entry.site));
+      save([...others, entry]);
+      source.value = '';
+      target.value = '';
+      source.focus();
+    });
+  };
+
+  document.getElementById('addGlossaryBtn').addEventListener('click', add);
+  [source, target, site].forEach(input => input.addEventListener('keydown', e => {
+    if (e.key === 'Enter') add();
+  }));
+
+  document.getElementById('exportGlossaryBtn').addEventListener('click', () => {
+    load(entries => downloadFile('coco-glossary.json', JSON.stringify(entries, null, 2)));
+  });
+
+  const importFile = document.getElementById('importGlossaryFile');
+  document.getElementById('importGlossaryBtn').addEventListener('click', () => importFile.click());
+  importFile.addEventListener('change', e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = evt => {
+      try {
+        const imported = JSON.parse(evt.target.result);
+        if (!Array.isArray(imported)) throw new Error('not an array');
+        const valid = imported
+          .filter(e => e && typeof e.source === 'string' && typeof e.target === 'string' && e.source.trim() && e.target.trim())
+          .map(e => ({ source: e.source.trim(), target: e.target.trim(), site: e.site ? SitePatterns.normalize(e.site) || '' : '' }));
+        load(entries => {
+          const key = e => `${e.source}\u0000${e.site}`;
+          const merged = new Map(entries.map(e => [key(e), e]));
+          valid.forEach(e => merged.set(key(e), e));
+          save([...merged.values()]);
+          showCustomWarning(t(`已匯入 ${valid.length} 筆詞條。`, `Imported ${valid.length} entries.`));
+        });
+      } catch (error) {
+        showCustomWarning(t('檔案格式不對，請選擇匯出的術語表 JSON。', 'Invalid file. Please choose an exported glossary JSON.'));
+      }
+      importFile.value = '';
+    };
+    reader.readAsText(file);
+  });
+
+  load(render);
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === 'local' && changes.glossary) render(changes.glossary.newValue || []);
+  });
+}
+
 // ---------------- 匯入正規表達式 ----------------
 function initRegexImport() {
   const importFile = document.getElementById('importFile');
@@ -165,5 +270,6 @@ document.addEventListener('DOMContentLoaded', () => {
   showSection(location.hash.slice(1));
   window.addEventListener('hashchange', () => showSection(location.hash.slice(1)));
   initSites();
+  initGlossary();
   initRegexImport();
 });

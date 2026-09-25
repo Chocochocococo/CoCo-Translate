@@ -827,6 +827,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('manageSitesBtn').addEventListener('click', () => {
     chrome.tabs.create({ url: chrome.runtime.getURL('options.html#sites') });
   });
+  document.getElementById('openGlossaryBtn').addEventListener('click', () => {
+    chrome.tabs.create({ url: chrome.runtime.getURL('options.html#glossary') });
+  });
 
   // 快捷鍵（瀏覽器內建的擴充功能快捷鍵：可以自訂，也可以清空停用）
   const shortcutDisplay = document.getElementById('shortcutDisplay');

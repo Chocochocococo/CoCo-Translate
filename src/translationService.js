@@ -8,7 +8,7 @@ const TranslationService = (() => {
     'googleApiKey', 'deepLApiKey', 'deepLAccountType',
     'llmSettings', 'mistralApiKey',
     'customPrompts', 'customPromptIndex',
-    'useDiskCache'
+    'useDiskCache', 'glossary'
   ];
   const MEMORY_CACHE_LIMIT = 5000;
 
@@ -135,16 +135,34 @@ const TranslationService = (() => {
    * @param {string} request.targetLang
    * @param {string} [request.sourceLang]
    * @param {'text'|'html'} [request.format] html：整段連同行內標籤一起翻（見 markup.js）
+   * @param {string} [request.pageUrl] 請求來自哪個網頁（套用網站專屬的術語表）
    * @returns {Promise<{translations: string[], error: Object|null}>}
    */
-  const translate = async ({ role = 'trigger', texts = [], targetLang = 'zh-TW', sourceLang = 'auto', format = 'text' }) => {
+  const translate = async ({ role = 'trigger', texts = [], targetLang = 'zh-TW', sourceLang = 'auto', format = 'text', pageUrl = '' }) => {
     const settings = await getSettings();
     const source = resolveSource(settings, role);
     const provider = getProvider(source, settings);
     const html = format === 'html';
     // 同一段文字，純文字跟段落格式的譯文不一樣（跳脫字元、標籤），快取要分開
-    const cacheId = `${providerCacheId(source, provider)}${html ? '|html' : ''}`;
-    const diskKey = text => (html ? `[html]${text}` : text);
+    // 這個網站適用的術語表；術語表改了，快取也要換一份
+    const glossaryEntries = Glossary.active(settings.glossary, pageUrl);
+    const glossaryId = Glossary.signature(glossaryEntries);
+    const cacheId = `${providerCacheId(source, provider)}${html ? '|html' : ''}${glossaryId ? `|g:${glossaryId}` : ''}`;
+    const diskKey = text => `${glossaryId ? `[g:${glossaryId}]` : ''}${html ? '[html]' : ''}${text}`;
+
+    const translateChunk = async chunk => {
+      const terms = Glossary.used(glossaryEntries, html ? chunk.map(Markup.stripTags) : chunk);
+      if (!terms.length) return provider.translateBatch(chunk, targetLang, sourceLang, { html });
+      // AI：術語表寫進 prompt
+      if (provider.isLLM) return provider.translateBatch(chunk, targetLang, sourceLang, { html, glossary: terms });
+      // 傳統翻譯：先換成譯名並標成不翻譯（一律用 HTML 模式送），回來再拿掉標記
+      const prepared = chunk.map(text => Glossary.wrapTerms(html ? text : Markup.escapeText(text), terms));
+      const results = await provider.translateBatch(prepared, targetLang, sourceLang, { html: true });
+      return results.map(result => {
+        const unwrapped = Glossary.unwrapTerms(result);
+        return html ? unwrapped : Markup.stripTags(unwrapped);
+      });
+    };
     const useDiskCache = !!settings.useDiskCache;
 
     const raw = new Array(texts.length);
@@ -192,7 +210,7 @@ const TranslationService = (() => {
 
     await Promise.all(chunks.map(async chunk => {
       try {
-        const results = await provider.translateBatch(chunk, targetLang, sourceLang, { html });
+        const results = await translateChunk(chunk);
         chunk.forEach((text, i) => {
           const result = results[i];
           if (typeof result !== 'string' || !result) return;

@@ -23,6 +23,8 @@
     "scripts": [
       "translationCache.js",
       "markup.js",
+      "sitePatterns.js",
+      "glossary.js",
       "postprocess.js",
       "rateLimiter.js",
       "translator.js",

@@ -634,6 +634,15 @@ function applyUnitBilingual(unit, translated) {
   const last = unit.nodes[unit.nodes.length - 1];
   if (last.parentNode !== unit.parent) return 'stale';
 
+  // 譯文跟原文一模一樣（人名、本來就是中文）就不用再放一次，幹，不然「Li Hai」會出現兩遍
+  const squash = text => text.replace(/\s+/g, '').toLowerCase();
+  const originalText = unit.textNodes.map(n => unit.originalTexts.get(n) ?? '').join('');
+  if (squash(Markup.stripTags(translated)) === squash(originalText)) {
+    bilingualWrappers.get(last)?.remove();
+    bilingualWrappers.delete(last);
+    return 'applied';
+  }
+
   const wrapper = document.createElement('font');
   wrapper.className = 'coco-bilingual';
   Object.assign(wrapper.style, { display: 'block', marginTop: '0.25em' });

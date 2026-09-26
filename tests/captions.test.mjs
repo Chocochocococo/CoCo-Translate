@@ -85,3 +85,29 @@ test('Captions.normalizeTrackUrl: 改要 json3、拿掉 YouTube 的自動翻譯�
   assert.equal(Captions.normalizeTrackUrl('https://www.youtube.com/youtubei/v1/player'), null);
   assert.equal(Captions.normalizeTrackUrl('/api/timedtext?lang=en'), null);
 });
+
+test('Captions: >> 換人講話要斷句並拿掉記號，[applause] 這種音效標記自己一行', () => {
+  const sentences = sentencesOf({ events: [
+    { tStartMs: 0, dDurationMs: 2000, segs: [{ utf8: '[applause] >> Every year I teach' }] },
+    { tStartMs: 2000, dDurationMs: 2000, segs: [{ utf8: 'a couple of hundred students.' }] },
+    { tStartMs: 4000, dDurationMs: 2000, segs: [{ utf8: 'They are stressed. >> Coming down the ladder now.' }] },
+    { tStartMs: 6000, dDurationMs: 1000, segs: [{ utf8: '>> We will do it' }] },
+    { tStartMs: 7000, dDurationMs: 1000, segs: [{ utf8: 'on the moon.' }] }
+  ] });
+  assert.deepEqual(sentences.map(s => s.text), [
+    '[applause]',
+    'Every year I teach a couple of hundred students.',
+    'They are stressed.',
+    'Coming down the ladder now.',
+    'We will do it on the moon.'
+  ]);
+});
+
+test('Captions: 自動字幕逐字的 >> 也會斷句', () => {
+  const sentences = sentencesOf({ events: [
+    { tStartMs: 0, dDurationMs: 3000, segs: [
+      { utf8: 'so' }, { utf8: ' yeah', tOffsetMs: 300 }, { utf8: ' >>', tOffsetMs: 600 }, { utf8: ' thank', tOffsetMs: 900 }, { utf8: ' you', tOffsetMs: 1200 }
+    ] }
+  ] });
+  assert.deepEqual(sentences.map(s => s.text), ['so yeah', 'thank you']);
+});

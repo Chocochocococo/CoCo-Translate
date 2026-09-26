@@ -11,6 +11,9 @@ const Captions = (() => {
   const LINGER_MS = 1500;        // 說完之後字幕多留一下，別一講完就消失
   const SENTENCE_END = /[.!?。！？…]["'”’」』)\]]*$/;
   const SOFT_END = /[,;:，、；：]$/;
+  const MARKERS = /(>>|\[[^\]]{1,30}\]|［[^］]{1,30}］)/;
+  const MARKERS_ONLY = /^(>>|\[[^\]]{1,30}\]|［[^］]{1,30}］)$/;
+  const SOUND_TAG = /^(\[[^\]]{1,30}\]|［[^］]{1,30}］)$/;
   const CJK = /[぀-ヿ㐀-鿿가-힯豈-﫿]/;
 
   const clean = text => String(text || '').replace(/​/g, '').replace(/\s*\n\s*/g, ' ');
@@ -68,18 +71,40 @@ const Captions = (() => {
       if (current && current.text.trim()) sentences.push({ ...current, text: current.text.replace(/\s+/g, ' ').trim() });
       current = null;
     };
-    units.forEach(unit => {
-      if (current && unit.start - current.end > MAX_GAP_MS) flush();
+    const append = (unit, text) => {
       if (!current) current = { text: '', start: unit.start, end: unit.end };
-      current.text = join(current.text, unit.text);
+      current.text = join(current.text, text);
       current.end = Math.max(current.end, unit.end);
-
+    };
+    // 句號、太長、太久就切
+    const checkEnd = () => {
+      if (!current) return;
       const text = current.text.trim();
       const words = wordCount(text);
       const cjk = cjkCount(text);
       if (SENTENCE_END.test(text)) return flush();
       if (words >= MAX_WORDS || cjk >= MAX_CJK_CHARS || current.end - current.start >= MAX_DURATION_MS) return flush();
       if ((words >= SOFT_WORDS || cjk >= MAX_CJK_CHARS * 0.6) && SOFT_END.test(text)) flush();
+    };
+    units.forEach(unit => {
+      if (current && unit.start - current.end > MAX_GAP_MS) flush();
+      // >> 是換人講話：斷句、記號本身拿掉。[applause] 這種音效標記自己一行
+      const pieces = unit.text.split(MARKERS).filter(piece => piece.trim());
+      if (pieces.length > 1 || MARKERS_ONLY.test(unit.text.trim())) {
+        pieces.forEach(piece => {
+          const trimmed = piece.trim();
+          if (trimmed === '>>') return flush();
+          if (SOUND_TAG.test(trimmed)) {
+            flush();
+            append(unit, trimmed);
+            return flush();
+          }
+          append(unit, piece);
+        });
+      } else {
+        append(unit, unit.text);
+      }
+      checkEnd();
     });
     flush();
 

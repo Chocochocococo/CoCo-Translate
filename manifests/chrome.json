@@ -55,13 +55,13 @@
   },
   "action": {
     "default_icon": {
-      "48": "icons/icon-48.png"
+      "64": "icons/icon-48.png"
     },
     "default_title": "CoCo Translate",
     "default_popup": "popup.html"
   },
   "icons": {
-    "48": "icons/icon-48.png"
+    "64": "icons/icon-48.png"
   },
   "commands": {
     "toggle-page-translation": {

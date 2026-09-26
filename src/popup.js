@@ -170,11 +170,13 @@ function initSettings() {
     renderTriggerHint();
   });
 
-  bindSwitch('enableYouTubeSubtitles', 'enableYouTubeSubtitles');
-  bindSegmented('youTubeSubtitleMode', 'youTubeSubtitleMode', {
-    defaultValue: 'bilingual',
-    normalize: value => (value === 'translation' ? 'translation' : 'bilingual')
-  });
+  // YouTube：總開關關著時，底下兩個選項變淡
+  const youTubeOptions = [...document.querySelectorAll('.youtube-option')];
+  const showYouTubeOptions = enabled => youTubeOptions.forEach(row => row.classList.toggle('dimmed', !enabled));
+  bindSwitch('enableYouTubeSubtitles', 'enableYouTubeSubtitles', { onChange: showYouTubeOptions });
+  chrome.storage.local.get(['enableYouTubeSubtitles'], data => showYouTubeOptions(data.enableYouTubeSubtitles === true));
+  bindSelect('youTubeSubtitleMode', 'youTubeSubtitleMode', { defaultValue: 'bilingual', normalize: normalizeYouTubeMode });
+  bindSwitch('youTubeTranscriptPanel', 'youTubeTranscriptPanel', { defaultValue: true });
 }
 
 function initLinks() {

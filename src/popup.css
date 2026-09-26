@@ -146,8 +146,16 @@ label.row {
   max-width: 150px;
 }
 
-.segmented.small {
-  flex-shrink: 0;
+/* YouTube 底下的兩個選項：矮一點，跟上面那列算同一組 */
+.card .row.sub-row {
+  min-height: 38px;
+  padding-top: 4px;
+  padding-bottom: 6px;
+  border-top: none;
+}
+
+.row.dimmed {
+  opacity: 0.5;
 }
 
 /* ---------- 頁尾 ---------- */

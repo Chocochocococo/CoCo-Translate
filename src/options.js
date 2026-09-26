@@ -131,10 +131,7 @@ function initGeneral() {
   bindSelect('contextMenuMode', 'customContextMenuMode', { defaultValue: '2' });
 
   bindSwitch('enableYouTubeSubtitles', 'enableYouTubeSubtitles');
-  bindSegmented('youTubeSubtitleMode', 'youTubeSubtitleMode', {
-    defaultValue: 'bilingual',
-    normalize: value => (value === 'translation' ? 'translation' : 'bilingual')
-  });
+  bindSegmented('youTubeSubtitleMode', 'youTubeSubtitleMode', { defaultValue: 'bilingual', normalize: normalizeYouTubeMode });
   bindSwitch('youTubeTranscriptPanel', 'youTubeTranscriptPanel', { defaultValue: true });
   bindSelect('youTubeSubtitleScale', 'youTubeSubtitleScale', { defaultValue: '1', normalize: value => String(value) });
   // 在影片上拖過字幕框之後，這裡可以一鍵放回原本 CC 的位置（在影片上按兩下字幕框也可以）

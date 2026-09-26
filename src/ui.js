@@ -130,6 +130,9 @@ function loadLLMSettings(callback) {
 
 const LLM_PROVIDERS_NEED_KEY = ['ollama-cloud', 'openrouter', 'gemini', 'groq', 'mistral'];
 
+// YouTube 影片上的字幕：雙語／只譯文／只原文／不顯示（只看字幕側欄）
+const normalizeYouTubeMode = mode => (['translation', 'original', 'none'].includes(mode) ? mode : 'bilingual');
+
 // 舊版的 mistral-api 現在歸到 AI (LLM)
 const normalizeSource = source => (source === 'mistral-api' ? 'llm' : source || 'google');
 

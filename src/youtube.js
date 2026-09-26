@@ -17,7 +17,7 @@ const YouTubeSubtitles = (() => {
   const THROTTLE_MS = 600;
   const cache = new Map();
   let enabled = false;
-  let mode = 'bilingual';          // bilingual：原文＋譯文；translation：只顯示譯文
+  let mode = 'bilingual';          // 影片上的字幕：bilingual 原文＋譯文／translation 只譯文／original 只原文／none 不顯示（只看側欄）
   let player = null;
   let observer = null;
   let box = null;
@@ -41,6 +41,7 @@ const YouTubeSubtitles = (() => {
   let resourceObserver = null;
   let tickTimer = null;
   let currentIndex = -2;
+  let captionsOff = false;         // 使用者按掉了 CC：影片上不顯示，側欄照樣跟著走
 
   // 字幕側欄
   const PANEL_ID = 'coco-yt-transcript';
@@ -240,9 +241,16 @@ const YouTubeSubtitles = (() => {
   };
 
   const setBoxText = (original, translated) => {
+    if (mode === 'none') {
+      hide();
+      return;
+    }
     ensureBox();
     const [originalEl, translatedEl] = box.children;
-    if (mode === 'translation') {
+    if (mode === 'original') {
+      originalEl.textContent = '';
+      translatedEl.textContent = original;
+    } else if (mode === 'translation') {
       // 原字幕藏起來了，翻不出來（或本來就是目標語言）時至少要顯示原文
       originalEl.textContent = '';
       translatedEl.textContent = translated || original;
@@ -263,8 +271,13 @@ const YouTubeSubtitles = (() => {
     const lines = captionLines();
     lastSignature = lines.join('\n');
     if (trackActive()) return;   // 整句模式在管，畫面上的 CC 不用讀
-    if (!enabled || !lines.length) {
+    // 影片上不顯示（備援模式也沒有側欄），或只要原文：不用翻
+    if (!enabled || !lines.length || mode === 'none') {
       hide();
+      return;
+    }
+    if (mode === 'original') {
+      setBoxText(lines.join('\n'), '');
       return;
     }
     const id = ++renderId;
@@ -293,9 +306,11 @@ const YouTubeSubtitles = (() => {
     return translated && !sameText(translated, track.sentences[index].text) ? translated : '';
   };
 
+  // 影片上的字幕框：CC 關著、或選了「不顯示」就不出現（側欄照樣跟著播放位置走）
   const renderSentence = () => {
-    if (!trackActive() || currentIndex < 0) {
-      if (trackActive()) hide();
+    if (!trackActive()) return;
+    if (currentIndex < 0 || captionsOff) {
+      hide();
       return;
     }
     setBoxText(track.sentences[currentIndex].text, translationOf(currentIndex));
@@ -308,11 +323,14 @@ const YouTubeSubtitles = (() => {
     if (!trackActive()) return;
     const video = videoElement();
     if (!video) return;
-    const index = captionsTurnedOff() ? -1 : Captions.findIndex(track.sentences, video.currentTime * 1000);
-    if (index === currentIndex) return;
+    const index = Captions.findIndex(track.sentences, video.currentTime * 1000);
+    const ccOff = captionsTurnedOff();
+    if (index === currentIndex && ccOff === captionsOff) return;
+    const indexChanged = index !== currentIndex;
     currentIndex = index;
+    captionsOff = ccOff;
     renderSentence();
-    highlightPanelLine(index);
+    if (indexChanged) highlightPanelLine(index);
   };
 
   // 離現在播放位置最近、還沒翻的那一批（往後的優先）
@@ -618,7 +636,7 @@ const YouTubeSubtitles = (() => {
   };
 
   const setMode = value => {
-    mode = value === 'translation' ? 'translation' : 'bilingual';
+    mode = ['translation', 'original', 'none'].includes(value) ? value : 'bilingual';
     if (!enabled) return;
     if (trackActive()) renderSentence();
     else schedule();

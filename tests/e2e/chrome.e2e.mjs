@@ -821,7 +821,29 @@ try {
   await check('YouTube 整句：關掉 CC 就不顯示', async () => {
     await yt2.waitForFunction(() => document.querySelector('#coco-yt-subtitle').style.display === 'none', null, { timeout: 2000 });
   });
+  const activeLine = () => yt2.getAttribute('#coco-yt-transcript .coco-yt-line[data-active="true"]', 'data-index');
+  await seek(3);
+  await check('YouTube 字幕側欄：CC 關著，側欄照樣跟著播放位置標亮', async () => {
+    await yt2.waitForFunction(() => document.querySelector('#coco-yt-transcript .coco-yt-line[data-index="1"]')?.dataset.active === 'true', null, { timeout: 2000 });
+    assert.equal((await boxText()).shown, false);
+  });
   await yt2.evaluate(() => document.querySelector('.ytp-subtitles-button').setAttribute('aria-pressed', 'true'));
+  await sw.evaluate(() => chrome.storage.local.set({ youTubeSubtitleMode: 'none' }));
+  await seek(0.5);
+  await check('YouTube 字幕：影片上選「不顯示」，只看字幕側欄', async () => {
+    await yt2.waitForFunction(() => document.querySelector('#coco-yt-transcript .coco-yt-line[data-index="0"]')?.dataset.active === 'true', null, { timeout: 2000 });
+    await yt2.waitForTimeout(300);
+    assert.equal((await boxText()).shown, false);
+    assert.equal(await activeLine(), '0');
+  });
+  await sw.evaluate(() => chrome.storage.local.set({ youTubeSubtitleMode: 'original' }));
+  await check('YouTube 字幕：影片上選「只原文」', async () => {
+    await yt2.waitForFunction(() => document.querySelector('#coco-yt-subtitle')?.style.display === 'block', null, { timeout: 2000 });
+    const text = await boxText();
+    assert.equal(text.translated, 'Today we will learn about foxes.');
+    assert.equal(await yt2.evaluate(() => document.querySelector('#coco-yt-subtitle .coco-yt-original').style.display), 'none');
+  });
+  await sw.evaluate(() => chrome.storage.local.set({ youTubeSubtitleMode: 'bilingual' }));
   await yt2.click('#coco-yt-transcript .coco-yt-transcript-close');
   await check('YouTube 字幕側欄：按 × 關閉，設定會記住；在設定頁打開又會出現', async () => {
     await yt2.waitForFunction(() => !document.querySelector('#coco-yt-transcript'), null, { timeout: 2000 });
@@ -978,6 +1000,15 @@ try {
     assert.equal(await popup.getAttribute('#displayMode button[data-value="bilingual"]', 'aria-pressed'), 'true');
   });
   await popup.click('#displayMode button[data-value="replace"]');
+  await check('popup：YouTube 影片上的字幕可選四種，字幕側欄另外開關', async () => {
+    assert.deepEqual(await popup.$$eval('#youTubeSubtitleMode option', os => os.map(o => o.value)), ['bilingual', 'translation', 'original', 'none']);
+    await popup.selectOption('#youTubeSubtitleMode', 'none');
+    await popup.click('#youTubeTranscriptPanel');
+    await popup.waitForTimeout(200);
+    const saved = await sw.evaluate(() => chrome.storage.local.get(['youTubeSubtitleMode', 'youTubeTranscriptPanel']));
+    assert.deepEqual(saved, { youTubeSubtitleMode: 'none', youTubeTranscriptPanel: false });
+  });
+  await sw.evaluate(() => chrome.storage.local.set({ youTubeSubtitleMode: 'bilingual', youTubeTranscriptPanel: true }));
   await popup.click('#toggleTranslation');
   await check('popup：關閉滑鼠觸發翻譯', async () => {
     await popup.waitForTimeout(200);

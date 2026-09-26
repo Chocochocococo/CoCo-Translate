@@ -484,3 +484,33 @@ test('Dictionary: 日文單字只查 Google，不查英英；整句話不查字�
   assert.equal(sentence, null);
   assert.equal(fetchCalls.length, 1);
 });
+
+// ---------------------------------------------------------------- 引號
+test('PostProcess: 全形＂、跨行、單引號、落單的引號也換成「」『』', () => {
+  const { context } = loadBackground();
+  const convert = text => context.PostProcess.convertQuotes(text, 'zh-TW');
+  assert.equal(convert('他說＂你好＂。'), '他說「你好」。');
+  assert.equal(convert('他說"你好，\n再見"。'), '他說「你好，\n再見」。');
+  assert.equal(convert('“他說‘快跑’，然後就走了。”'), '「他說『快跑』，然後就走了。」');
+  // 一段對話跨好幾段：開頭落單的是上引號、結尾落單的是下引號
+  assert.equal(convert('"你好，我是林楓。'), '「你好，我是林楓。');
+  assert.equal(convert('我們走吧。"'), '我們走吧。」');
+  // 中間落單的不猜（可能是英吋），英文縮寫的 ’ 也不動
+  assert.equal(convert('這是 12" 的螢幕'), '這是 12" 的螢幕');
+  assert.equal(convert('他說 don’t'), '他說 don’t');
+  assert.equal(context.PostProcess.convertQuotes('他說＂你好＂。', 'en'), '他說＂你好＂。');
+});
+
+test('TranslationService: AI 翻譯的引號一樣會換成「」（段落 html 模式也是）', async () => {
+  const { context } = loadBackground({
+    storage: {
+      pageTranslationSource: 'llm',
+      llmSettings: { provider: 'ollama-local', providers: { 'ollama-local': { model: 'qwen3' } } }
+    },
+    fetch: async () => chatResponse('{"segments":["他說＂<b id=\\"g0\\">你好</b>＂。","\\"走吧，"]}')
+  });
+  const result = plain(await context.TranslationService.translate({
+    role: 'page', texts: ['He said "<b id="g0">hi</b>".', '"Let\'s go,'], targetLang: 'zh-TW', format: 'html'
+  }));
+  assert.deepEqual(result.translations, ['他說「<b id="g0">你好</b>」。', '「走吧，']);
+});

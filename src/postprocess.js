@@ -36,14 +36,27 @@ const PostProcess = (() => {
   const applyRegexPatterns = (text, compiled) =>
     compiled.reduce((result, { regex, output }) => result.replace(regex, output), text);
 
+  // 標籤在 html 模式會先換成私用區字元（Markup.protect），判斷引號位置時當作不存在
+  const TAG_CHARS = '\\ue000-\\uf8ff';
+  const OPENING_LONE_QUOTE = new RegExp(`(^[\\s${TAG_CHARS}]*)"`);
+  const CLOSING_LONE_QUOTE = new RegExp(`"([\\s${TAG_CHARS}]*)$`);
+
   const convertQuotes = (text, targetLang) => {
     if (KEEP_QUOTES_LANGS.includes((targetLang || '').toLowerCase())) return text;
     return text
-      .replace(/["“”](.+?)["”]/g, '「$1」')
-      .replace(/[“](.+?)[」]/g, '「$1」')
-      .replace(/[「](.+?)[”]/g, '「$1」')
+      // 有些 AI 翻中文會用全形的＂，先當成一般的引號
+      .replace(/＂/g, '"')
+      // 成對的引號（中間換行也算，以前 .+? 跨不了行，幹）
+      .replace(/["“”]([^"“”]*?)["”]/g, '「$1」')
+      .replace(/“([^“”」]*?)」/g, '「$1」')
+      .replace(/「([^「」”]*?)”/g, '「$1」')
+      // 引號裡的引號：‘…’ → 『…』（只換成對的，英文縮寫的 ’ 不動）
+      .replace(/‘([^‘’]*?)’/g, '『$1』')
       .replace(/”/g, '」')
-      .replace(/“/g, '「');
+      .replace(/“/g, '「')
+      // 一段對話跨好幾段時，引號會落單：開頭的算上引號、結尾的算下引號，中間的不猜
+      .replace(OPENING_LONE_QUOTE, '$1「')
+      .replace(CLOSING_LONE_QUOTE, '」$1');
   };
 
   // 模型自己加的開場白（沒有預填充之後，有些模型會先講一句再給譯文）

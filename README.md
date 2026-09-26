@@ -16,7 +16,7 @@ Chrome、Firefox
 
 # 最新版本
 
-Ver.1.7.0.0
+Ver.1.7.1.0
 
 [原始說明文件（含圖片）](https://hypnotic-denim-05e.notion.site/CoCo-Translate-175cbce1913780ca8efbf2267976a0a7?pvs=74)
 

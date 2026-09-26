@@ -63,7 +63,7 @@
     "default_popup": "popup.html"
   },
   "icons": {
-    "48": "icons/icon-48.png"
+    "64": "icons/icon-48.png"
   },
   "browser_specific_settings": {
     "gecko": {

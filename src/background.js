@@ -41,7 +41,8 @@ function createContextMenus() {
 
 const updateActionIcon = (isEnabled) => {
   actionApi.setIcon({
-    path: { 48: isEnabled ? "icons/icon-48.png" : "icons/icon-disabled-48.png" }
+    // 圖示檔名寫 48，其實是 64×64（宣告錯的話 Firefox 審核會警告）
+    path: { 64: isEnabled ? "icons/icon-48.png" : "icons/icon-disabled-48.png" }
   });
 };
 

@@ -296,7 +296,7 @@ const SKIP_TAGS = new Set(['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE', 'TEXTAREA'
 // CoCo 自己的介面
 const SKIP_SELECTOR = [
   '.immersive-translation-container', '.coco-bilingual', '#custom-context-menu', '#input-box', '#translation-box',
-  '#coco-selection-toolbar', '#coco-word-card', '#coco-yt-subtitle', '.ytp-caption-window-container',
+  '#coco-selection-toolbar', '#coco-word-card', '#coco-yt-subtitle', '#coco-yt-transcript', '.ytp-caption-window-container',
   '#original-text-tooltip', '#copy-tooltip', '#coco-error-toast'
 ].join(', ');
 
@@ -1144,11 +1144,15 @@ const getSelectionInfo = () => {
   const element = range.commonAncestorContainer.nodeType === Node.TEXT_NODE
     ? range.commonAncestorContainer.parentElement
     : range.commonAncestorContainer;
-  if (!element || element.closest(`${SKIP_SELECTOR}, #coco-selection-toolbar, #coco-word-card`)) return null;
+  if (!element) return null;
+  // YouTube 字幕側欄是我們自己的，整頁翻譯要跳過，但裡面的字要能查單字
+  const inTranscript = !!element.closest('#coco-yt-transcript');
+  if (!inTranscript && element.closest(`${SKIP_SELECTOR}, #coco-selection-toolbar, #coco-word-card`)) return null;
   const block = getClosestContentContainer(element) || element;
   return {
     text,
     element,
+    inTranscript,
     rect: range.getBoundingClientRect(),
     context: extractSentence(block.innerText || block.textContent || '', text)
   };
@@ -1228,7 +1232,8 @@ const showTranslationButton = e => {
   lastSelection = info;
   createTranslationButton();
   // 整頁翻譯時段落已經翻好了，只留查字典和朗讀
-  selectionTranslationButton.translateButton.style.display = isPageTranslationMode ? 'none' : 'inline-flex';
+  // 字幕側欄已經有譯文了，也不用
+  selectionTranslationButton.translateButton.style.display = isPageTranslationMode || info.inTranscript ? 'none' : 'inline-flex';
   selectionTranslationButton.style.left = `${cursorPosition.x + 20 + window.scrollX}px`;
   selectionTranslationButton.style.top = `${cursorPosition.y - 40 + window.scrollY}px`;
   selectionTranslationButton.style.display = 'flex';
@@ -2002,334 +2007,9 @@ chrome.storage.onChanged.addListener((changes, namespace) => {
   }
   if (changed('enableSelectionButton')) applySelectionButtonSetting(changes.enableSelectionButton.newValue !== false);
   if (changed('enableFloatingButton')) applyFloatingButtonSetting(changes.enableFloatingButton.newValue !== false);
-  if (changed('youTubeSubtitleMode')) YouTubeSubtitles.setMode(changes.youTubeSubtitleMode.newValue);
-  if (changed('youTubeSubtitleScale')) YouTubeSubtitles.setScale(changes.youTubeSubtitleScale.newValue);
-  if (changed('youTubeSubtitlePosition')) YouTubeSubtitles.setPosition(changes.youTubeSubtitlePosition.newValue);
-  if (changed('enableYouTubeSubtitles')) YouTubeSubtitles.setEnabled(changes.enableYouTubeSubtitles.newValue === true);
 });
 
-// ---------------- YouTube 雙語字幕 ----------------
-// YouTube 原本的 CC 字幕改成透明（還在背景更新，讓我們讀；也還拖得動），
-// 在原本的位置顯示「一個」字幕框：原文＋譯文，或只顯示譯文。
-// 用整頁翻譯的來源（預設 Google，不耗 AI 額度）；每行翻過就快取，自動產生的滾動字幕也不會一直重翻
-const YouTubeSubtitles = (() => {
-  const isYouTube = /(^|\.)youtube\.com$/.test(location.hostname);
-  const PLAYER_SELECTOR = '#movie_player, .html5-video-player';
-  const CAPTION_WINDOW_SELECTOR = '.ytp-caption-window-container .caption-window';
-  const HIDE_NATIVE_STYLE_ID = 'coco-yt-hide-native';
-  const THROTTLE_MS = 600;
-  const cache = new Map();
-  let enabled = false;
-  let mode = 'bilingual';          // bilingual：原文＋譯文；translation：只顯示譯文
-  let player = null;
-  let observer = null;
-  let box = null;
-  let pollTimer = null;
-  let throttleTimer = null;
-  let frame = null;
-  let lastRun = 0;
-  let renderId = 0;
-  let lastTranslated = '';
-  let lastSignature = '';
-  let scale = 1;                   // 字幕大小：以 YouTube 字幕設定的大小為準再乘上這個倍率
-  let customPosition = null;       // 使用者拖過的位置 { x, bottom }（播放器寬高的比例）；null＝跟著原字幕
-  let dragging = false;
-  let lastFontSize = 0;
-
-  const normalize = text => text.replace(/\s+/g, '');
-
-  // 按鈕顯示 CC 關著 → 不管 DOM 裡還剩什麼，都當作沒有字幕
-  const captionsTurnedOff = () =>
-    player?.querySelector('.ytp-subtitles-button')?.getAttribute('aria-pressed') === 'false';
-
-  // 只看真的有顯示的字幕框：YouTube 會把用過的字幕框藏起來（display: none）卻不刪掉，
-  // 之前連那些一起讀，舊字幕就一直黏在畫面上，幹。
-  // （我們自己把原字幕設成透明，透明的照樣有大小，所以用 getClientRects 判斷）
-  const visibleCaptionWindows = () => {
-    if (!player || captionsTurnedOff()) return [];
-    return [...player.querySelectorAll(CAPTION_WINDOW_SELECTOR)]
-      .filter(win => win.getClientRects().length > 0 && getComputedStyle(win).visibility !== 'hidden');
-  };
-
-  const captionLines = () => visibleCaptionWindows()
-    .flatMap(win => [...win.querySelectorAll('.caption-visual-line')])
-    .map(line => line.textContent.replace(/\s+/g, ' ').trim())
-    .filter(Boolean);
-
-  // 原本的字幕只是變透明：YouTube 照樣更新內容，使用者也照樣能拖曳它的位置
-  const hideNativeCaptions = hide => {
-    const existing = document.getElementById(HIDE_NATIVE_STYLE_ID);
-    if (!hide) {
-      existing?.remove();
-      return;
-    }
-    if (existing) return;
-    const style = document.createElement('style');
-    style.id = HIDE_NATIVE_STYLE_ID;
-    style.textContent = '.ytp-caption-window-container { opacity: 0 !important; }';
-    (document.head || document.documentElement).appendChild(style);
-  };
-
-  const ensureBox = () => {
-    if (box && box.isConnected) return box;
-    box = document.createElement('div');
-    box.id = 'coco-yt-subtitle';
-    Object.assign(box.style, {
-      position: 'absolute',
-      transform: 'translateX(-50%)',
-      maxWidth: '90%',
-      padding: '0.15em 0.5em',
-      background: 'rgba(8, 8, 8, 0.75)',
-      color: '#fff',
-      textAlign: 'center',
-      lineHeight: '1.35',
-      borderRadius: '4px',
-      cursor: 'move',
-      userSelect: 'none',
-      zIndex: '60',
-      display: 'none',
-      whiteSpace: 'pre-line'
-    });
-    box.title = uiLanguage === 'zh'
-      ? '拖曳可以移動字幕；按兩下回到原本 CC 的位置'
-      : 'Drag to move the subtitles; double-click to put them back where CC is';
-    enableDragging(box);
-    const original = document.createElement('div');
-    original.className = 'coco-yt-original';
-    Object.assign(original.style, { color: '#ddd', fontSize: '0.85em' });
-    const translated = document.createElement('div');
-    translated.className = 'coco-yt-translated';
-    box.append(original, translated);
-    player.appendChild(box);
-    return box;
-  };
-
-  // 字幕框整個留在播放器裡面（拖太出去、或視窗縮小時）
-  const placeBox = (centerX, bottom, playerRect) => {
-    const halfWidth = box.offsetWidth / 2;
-    const maxBottom = Math.max(0, playerRect.height - box.offsetHeight);
-    centerX = Math.min(Math.max(centerX, halfWidth), Math.max(halfWidth, playerRect.width - halfWidth));
-    bottom = Math.min(Math.max(bottom, 0), maxBottom);
-    box.style.left = `${centerX}px`;
-    box.style.bottom = `${bottom}px`;
-  };
-
-  // 每一幀更新位置：沒拖過就跟著原字幕走（控制列出現時 YouTube 會把它往上推），拖過就停在拖到的地方
-  const followNativePosition = () => {
-    frame = null;
-    if (!box || box.style.display === 'none' || !player) return;
-    const playerRect = player.getBoundingClientRect();
-    const [captionWindow] = visibleCaptionWindows();
-    if (captionWindow) {
-      // 字體大小、字型都跟原字幕一樣（使用者在 YouTube 設定的字幕樣式照樣有效），再乘上我們的倍率
-      const segment = captionWindow.querySelector('.ytp-caption-segment');
-      if (segment) {
-        const style = getComputedStyle(segment);
-        lastFontSize = parseFloat(style.fontSize) || lastFontSize;
-        box.style.fontFamily = style.fontFamily;
-      }
-    }
-    // 還沒讀到原字幕的大小：用 YouTube 預設的大約比例（播放器高度的 1/27）
-    const baseSize = lastFontSize || playerRect.height / 27;
-    box.style.fontSize = `${Math.round(baseSize * scale * 10) / 10}px`;
-
-    if (customPosition) {
-      placeBox(customPosition.x * playerRect.width, customPosition.bottom * playerRect.height, playerRect);
-    } else if (captionWindow) {
-      const captionRect = captionWindow.getBoundingClientRect();
-      placeBox(captionRect.left + captionRect.width / 2 - playerRect.left, playerRect.bottom - captionRect.bottom, playerRect);
-    }
-    frame = requestAnimationFrame(followNativePosition);
-  };
-
-  const redraw = () => {
-    if (box && box.style.display !== 'none') frame ??= requestAnimationFrame(followNativePosition);
-  };
-
-  // 自己的拖曳：以前讓滑鼠穿透去拖透明的原字幕，但我們的框比原字幕大（多了譯文），常常點不到，幹
-  const enableDragging = element => {
-    // 別讓 YouTube 收到點擊：單擊會暫停、按兩下會全螢幕
-    ['click', 'dblclick', 'mouseup', 'pointerup'].forEach(type =>
-      element.addEventListener(type, e => e.stopPropagation()));
-
-    element.addEventListener('dblclick', () => {
-      customPosition = null;
-      chrome.storage.local.remove('youTubeSubtitlePosition');
-      redraw();
-    });
-
-    element.addEventListener('mousedown', e => {
-      if (e.button !== 0 || !player) return;
-      e.preventDefault();
-      e.stopPropagation();
-      const playerRect = player.getBoundingClientRect();
-      const boxRect = element.getBoundingClientRect();
-      const startX = e.clientX;
-      const startY = e.clientY;
-      const startCenter = boxRect.left + boxRect.width / 2 - playerRect.left;
-      const startBottom = playerRect.bottom - boxRect.bottom;
-      dragging = false;
-
-      const onMove = moveEvent => {
-        const dx = moveEvent.clientX - startX;
-        const dy = moveEvent.clientY - startY;
-        if (!dragging && Math.hypot(dx, dy) < 3) return;   // 手抖不算拖
-        dragging = true;
-        const rect = player.getBoundingClientRect();
-        placeBox(startCenter + dx, startBottom - dy, rect);
-        customPosition = {
-          x: parseFloat(element.style.left) / rect.width,
-          bottom: parseFloat(element.style.bottom) / rect.height
-        };
-      };
-      const onUp = upEvent => {
-        document.removeEventListener('mousemove', onMove, true);
-        document.removeEventListener('mouseup', onUp, true);
-        upEvent.stopPropagation();
-        if (dragging) chrome.storage.local.set({ youTubeSubtitlePosition: customPosition });
-        dragging = false;
-      };
-      document.addEventListener('mousemove', onMove, true);
-      document.addEventListener('mouseup', onUp, true);
-    });
-  };
-
-  const hide = () => {
-    if (box) box.style.display = 'none';
-  };
-
-  const show = (lines, pending) => {
-    const original = lines.join('\n');
-    const translations = lines
-      .map(line => cache.get(line))
-      .filter((text, i) => text && normalize(text) !== normalize(lines[i]));
-    // 新的一句還在翻，先留著上一句的譯文，免得一直閃
-    let translated = translations.join('\n');
-    if (!translated && pending) translated = lastTranslated;
-    if (translated) lastTranslated = translated;
-
-    ensureBox();
-    const [originalEl, translatedEl] = box.children;
-    if (mode === 'translation') {
-      // 原字幕藏起來了，翻不出來（或本來就是目標語言）時至少要顯示原文
-      originalEl.textContent = '';
-      translatedEl.textContent = translated || original;
-    } else {
-      originalEl.textContent = original;
-      translatedEl.textContent = translated;
-    }
-    originalEl.style.display = originalEl.textContent ? 'block' : 'none';
-    translatedEl.style.display = translatedEl.textContent ? 'block' : 'none';
-    if (box.style.display === 'none') {
-      box.style.display = 'block';
-      frame ??= requestAnimationFrame(followNativePosition);
-    }
-  };
-
-  const render = async () => {
-    lastRun = Date.now();
-    const lines = captionLines();
-    lastSignature = lines.join('\n');
-    if (!enabled || !lines.length) {
-      hide();
-      return;
-    }
-    const id = ++renderId;
-    const missing = lines.filter(line => !cache.has(line));
-    show(lines, missing.length > 0);
-    if (!missing.length) return;
-
-    const { translations, error } = await requestTranslations('page', missing, targetLanguage, 'text', { quiet: true });
-    missing.forEach((line, i) => {
-      if (!(error && translations[i] === line)) cache.set(line, translations[i]);
-    });
-    if (id === renderId && enabled) show(lines, false);
-  };
-
-  // 字幕一變就更新；逐字滾動的自動字幕最多每 0.6 秒翻一次
-  const schedule = () => {
-    if (!enabled) return;
-    clearTimeout(throttleTimer);
-    const wait = Math.max(0, THROTTLE_MS - (Date.now() - lastRun));
-    throttleTimer = setTimeout(render, wait);
-  };
-
-  const attach = () => {
-    const found = document.querySelector(PLAYER_SELECTOR);
-    if (!found || found === player) return;
-    observer?.disconnect();
-    player = found;
-    box = null;
-    observer = new MutationObserver(mutations => {
-      const captionChanged = mutations.some(m => {
-        const target = m.target.nodeType === Node.TEXT_NODE ? m.target.parentElement : m.target;
-        return target?.closest?.('.ytp-caption-window-container');
-      });
-      if (captionChanged) schedule();
-    });
-    observer.observe(player, { childList: true, subtree: true, characterData: true });
-  };
-
-  // 保險：YouTube 有時只改 style 就把字幕藏起來（關 CC、換字幕軌），MutationObserver 沒在看屬性，
-  // 所以定期比對一次目前的字幕，不一樣就重畫
-  const poll = () => {
-    attach();
-    if (captionLines().join('\n') !== lastSignature) schedule();
-  };
-
-  const setEnabled = value => {
-    enabled = !!value && isYouTube;
-    hideNativeCaptions(enabled);
-    if (!enabled) {
-      observer?.disconnect();
-      observer = null;
-      player = null;
-      clearInterval(pollTimer);
-      pollTimer = null;
-      clearTimeout(throttleTimer);
-      if (frame) cancelAnimationFrame(frame);
-      frame = null;
-      box?.remove();
-      box = null;
-      lastTranslated = '';
-      lastSignature = '';
-      return;
-    }
-    // YouTube 是單頁應用程式，播放器可能晚一點才出現，也可能換掉，定期檢查
-    attach();
-    pollTimer ??= setInterval(poll, 500);
-    schedule();
-  };
-
-  const setMode = value => {
-    mode = value === 'translation' ? 'translation' : 'bilingual';
-    if (enabled) schedule();
-  };
-
-  const setScale = value => {
-    const number = parseFloat(value);
-    scale = number >= 0.5 && number <= 3 ? number : 1;
-    redraw();
-  };
-
-  const setPosition = value => {
-    if (dragging) return;   // 自己拖的時候存進去的，不用再套一次
-    const valid = value && Number.isFinite(value.x) && Number.isFinite(value.bottom);
-    customPosition = valid ? { x: value.x, bottom: value.bottom } : null;
-    redraw();
-  };
-
-  return { setEnabled, setMode, setScale, setPosition, isYouTube };
-})();
-
-if (YouTubeSubtitles.isYouTube) {
-  chrome.storage.local.get(['enableYouTubeSubtitles', 'youTubeSubtitleMode', 'youTubeSubtitleScale', 'youTubeSubtitlePosition'], data => {
-    YouTubeSubtitles.setMode(data.youTubeSubtitleMode);
-    YouTubeSubtitles.setScale(data.youTubeSubtitleScale);
-    YouTubeSubtitles.setPosition(data.youTubeSubtitlePosition);
-    YouTubeSubtitles.setEnabled(data.enableYouTubeSubtitles === true);
-  });
-}
+// YouTube 雙語字幕在 youtube.js（排在 content.js 後面載入）
 
 // 告訴 background 這是剛載入的新頁面，右鍵選單的整頁翻譯狀態要重設
 chrome.runtime.sendMessage({ type: 'CONTENT_READY' }, () => void chrome.runtime.lastError);

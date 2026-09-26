@@ -7,6 +7,10 @@
 整頁雙語對照、滑鼠觸發翻譯、單字卡與生字本、YouTube 整句雙語字幕；
 翻譯來源支援 Google、Bing、Google Cloud、DeepL，以及 Ollama、OpenRouter、Gemini 等 AI 翻譯。
 
+## 關於
+
+用 Vibe Coding 做出來的擴充：作者沒有學過程式，由 ChatGPT 打好 1.0～1.4 的基礎，1.5 以後的大改版與官網由 Claude（Claude Code）協作完成。
+
 ## 開發
 
 ```sh

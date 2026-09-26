@@ -1,0 +1,738 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>CoCo Translate 可可翻譯｜雙語對照的瀏覽器翻譯擴充</title>
+<meta name="description" content="CoCo Translate（可可翻譯）是給 Chrome 和 Firefox 的雙語翻譯擴充功能：整頁雙語對照、滑鼠觸發翻譯、單字卡與生字本、YouTube 整句雙語字幕，支援 Google、Bing、DeepL 與 AI 翻譯。">
+<link rel="canonical" href="https://chocochocococo.github.io/CoCo-Translate/">
+<link rel="icon" type="image/png" href="img/logo.png">
+<meta name="theme-color" content="#f4f7ef" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#141816" media="(prefers-color-scheme: dark)">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="CoCo Translate">
+<meta property="og:title" content="CoCo Translate 可可翻譯">
+<meta property="og:description" content="CoCo Translate（可可翻譯）是給 Chrome 和 Firefox 的雙語翻譯擴充功能：整頁雙語對照、滑鼠觸發翻譯、單字卡與生字本、YouTube 整句雙語字幕，支援 Google、Bing、DeepL 與 AI 翻譯。">
+<meta property="og:url" content="https://chocochocococo.github.io/CoCo-Translate/">
+<meta property="og:image" content="https://chocochocococo.github.io/CoCo-Translate/img/card-page.png">
+<meta property="og:locale" content="zh_TW">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=LXGW+WenKai+TC:wght@400;700&family=Noto+Sans+TC:wght@400;500;700&family=JetBrains+Mono:wght@500&display=swap">
+<style>
+  html { -webkit-text-size-adjust: 100%; }
+  img { max-width: 100%; }
+  :root {
+    --paper: #f4f7ef;
+    --surface: #ffffff;
+    --sunken: #eaf0e3;
+    --line: #dde6d3;
+    --ink: #26311f;
+    --muted: #66745e;
+    --leaf: #3f9a5e;
+    --leaf-soft: #e0f0dd;
+    --husk: #8b5a36;
+    --shadow: 0 18px 40px -22px rgba(52, 78, 40, 0.45);
+    --show-light: block;
+    --show-dark: none;
+    --display: "LXGW WenKai TC", "Kaiti TC", "BiauKai", "STKaiti", serif;
+    --body: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", system-ui, sans-serif;
+    --mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper: #141816;
+      --surface: #1d2320;
+      --sunken: #232a26;
+      --line: #313a35;
+      --ink: #e4ebe6;
+      --muted: #97a59c;
+      --leaf: #63cf95;
+      --leaf-soft: #213529;
+      --husk: #d9a67a;
+      --shadow: 0 18px 40px -22px rgba(0, 0, 0, 0.8);
+      --show-light: none;
+      --show-dark: block;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper: #141816;
+    --surface: #1d2320;
+    --sunken: #232a26;
+    --line: #313a35;
+    --ink: #e4ebe6;
+    --muted: #97a59c;
+    --leaf: #63cf95;
+    --leaf-soft: #213529;
+    --husk: #d9a67a;
+    --shadow: 0 18px 40px -22px rgba(0, 0, 0, 0.8);
+    --show-light: none;
+    --show-dark: block;
+    color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font: 16px/1.8 var(--body);
+    padding-inline: 20px;
+  }
+  a { color: var(--leaf); text-underline-offset: 3px; }
+  a:focus-visible, summary:focus-visible { outline: 2px solid var(--leaf); outline-offset: 3px; border-radius: 4px; }
+  h1, h2, h3 { font-family: var(--display); font-weight: 700; text-wrap: balance; line-height: 1.3; margin: 0; }
+  p { margin: 0; }
+  kbd, .mono { font-family: var(--mono); font-size: 0.85em; }
+  kbd {
+    padding: 1px 7px;
+    border: 1px solid var(--line);
+    border-bottom-width: 2px;
+    border-radius: 6px;
+    background: var(--surface);
+    white-space: nowrap;
+  }
+  .q { color: var(--husk); }
+  .wrap { max-width: 1080px; margin-inline: auto; }
+  .shot-light { display: var(--show-light); }
+  .shot-dark { display: var(--show-dark); }
+  figure { margin: 0; }
+  figure img {
+    width: 100%;
+    height: auto;
+    border-radius: 14px;
+    border: 1px solid var(--line);
+    box-shadow: var(--shadow);
+  }
+
+  /* ---------- 導覽 ---------- */
+  .nav {
+    position: sticky;
+    top: env(safe-area-inset-top, 0px);
+    z-index: 5;
+    margin-inline: -20px;
+    padding: 10px 20px;
+    background: color-mix(in srgb, var(--paper) 88%, transparent);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--line);
+  }
+  .nav .wrap { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
+  .brand { display: flex; align-items: center; gap: 10px; font-family: var(--display); font-weight: 700; font-size: 19px; color: var(--ink); text-decoration: none; margin-right: auto; }
+  .brand img { width: 30px; height: 30px; }
+  .nav nav { display: flex; gap: 18px; flex-wrap: wrap; font-size: 15px; }
+  .nav nav a { color: var(--muted); text-decoration: none; }
+  .nav nav a:hover { color: var(--leaf); }
+
+  /* ---------- 開場 ---------- */
+  .hero {
+    display: grid;
+    grid-template-columns: minmax(0, 1.25fr) minmax(0, 0.75fr);
+    gap: 48px;
+    align-items: center;
+    padding-block: 64px 72px;
+  }
+  .eyebrow { color: var(--muted); font-size: 14px; letter-spacing: 0.08em; }
+  .hero h1 { font-size: clamp(38px, 6vw, 60px); margin-top: 10px; }
+  .hero h1 .q { font-weight: 400; }
+  .specimen {
+    margin-top: 28px;
+    padding: 18px 22px;
+    border-left: 3px solid var(--husk);
+    background: var(--surface);
+    border-radius: 0 12px 12px 0;
+    max-width: 34em;
+  }
+  .specimen .en { font-family: Georgia, "Times New Roman", serif; font-size: 17px; }
+  .specimen .zh { font-family: var(--display); font-size: 19px; margin-top: 4px; }
+  .lede { margin-top: 24px; color: var(--muted); max-width: 32em; }
+  .actions { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 28px; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 11px 22px; border-radius: 999px;
+    font-weight: 700; text-decoration: none; font-size: 15px;
+  }
+  .btn.primary { background: var(--leaf); color: var(--paper); }
+  .btn.ghost { border: 1px solid var(--line); color: var(--ink); background: var(--surface); }
+  .facts { display: flex; gap: 8px 22px; flex-wrap: wrap; margin-top: 22px; color: var(--muted); font-size: 14px; }
+  .hero figure { max-width: 340px; justify-self: center; }
+
+  /* ---------- 區塊 ---------- */
+  section { padding-block: 56px; border-top: 1px solid var(--line); }
+  .section-head { max-width: 40em; margin-bottom: 36px; }
+  .section-head h2 { font-size: clamp(28px, 4vw, 38px); }
+  .section-head p { margin-top: 10px; color: var(--muted); }
+
+  .feature {
+    display: grid;
+    grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+    gap: 40px;
+    align-items: center;
+  }
+  .feature + .feature { margin-top: 64px; }
+  .feature.flip { grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr); }
+  .feature.flip .text { order: 2; }
+  .feature h3 { font-size: 26px; }
+  .feature .text p { margin-top: 12px; }
+  .feature ul { margin: 14px 0 0; padding-left: 1.2em; color: var(--muted); }
+  .feature li + li { margin-top: 4px; }
+  .feature .narrow { max-width: 380px; justify-self: center; }
+
+  .grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; }
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    padding: 24px 26px;
+  }
+  .panel h3 { font-size: 22px; }
+  .panel .note { margin-top: 14px; color: var(--muted); font-size: 14px; }
+  ol.steps { margin: 14px 0 0; padding-left: 1.4em; }
+  ol.steps li + li { margin-top: 6px; }
+
+  .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); }
+  table { border-collapse: collapse; width: 100%; min-width: 620px; font-size: 15px; }
+  th, td { text-align: left; padding: 12px 16px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  th { font-size: 13px; color: var(--muted); font-weight: 500; letter-spacing: 0.04em; background: var(--sunken); }
+  .tag { display: inline-block; padding: 0 9px; border-radius: 999px; font-size: 13px; background: var(--leaf-soft); color: var(--leaf); white-space: nowrap; }
+  .tag.key { background: var(--sunken); color: var(--muted); }
+
+  .manual { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; }
+  dl { margin: 14px 0 0; }
+  dt { font-weight: 700; margin-top: 14px; }
+  dt:first-child { margin-top: 0; }
+  dd { margin: 2px 0 0; color: var(--muted); }
+
+  details { border-bottom: 1px solid var(--line); padding-block: 16px; }
+  details:first-of-type { border-top: 1px solid var(--line); }
+  summary { cursor: pointer; font-weight: 700; font-size: 17px; list-style: none; display: flex; gap: 12px; }
+  summary::-webkit-details-marker { display: none; }
+  summary::before { content: "＋"; color: var(--leaf); font-family: var(--mono); }
+  details[open] summary::before { content: "－"; }
+  details p { margin-top: 10px; color: var(--muted); max-width: 44em; }
+  .faq { max-width: 820px; }
+
+  footer { padding-block: 40px 56px; border-top: 1px solid var(--line); color: var(--muted); font-size: 14px; }
+  footer .wrap { display: flex; gap: 12px 28px; flex-wrap: wrap; align-items: center; }
+  footer .made { margin-left: auto; }
+
+  @media (max-width: 820px) {
+    .hero, .feature, .feature.flip, .grid-2, .manual { grid-template-columns: minmax(0, 1fr); }
+    .feature.flip .text { order: 0; }
+    .hero { padding-block: 40px 48px; gap: 36px; }
+    .nav nav { gap: 14px; font-size: 14px; }
+  }
+
+  /* ---------- 更新日記 ---------- */
+  .log { max-width: 820px; }
+  .release { display: grid; grid-template-columns: 9.5em minmax(0, 1fr); gap: 8px 24px; padding-block: 22px; border-top: 1px solid var(--line); }
+  .release:first-of-type { border-top: none; padding-top: 0; }
+  .release .when { color: var(--muted); font-size: 14px; }
+  .release .when .mono { display: block; color: var(--leaf); font-size: 15px; }
+  .release h3 { font-size: 20px; }
+  .release ul { margin: 8px 0 0; padding-left: 1.2em; }
+  .release li + li { margin-top: 3px; }
+  .release li ul { margin-top: 3px; color: var(--muted); }
+  .older { margin-top: 12px; border: none; padding: 0; }
+  .older > summary { font-size: 16px; color: var(--leaf); padding-block: 12px; }
+  @media (max-width: 620px) { .release { grid-template-columns: minmax(0, 1fr); } }
+</style>
+</head>
+<body>
+
+<header class="nav">
+  <div class="wrap">
+    <a class="brand" href="#top"><img src="img/logo.png" alt="">CoCo Translate</a>
+    <nav aria-label="頁面導覽">
+      <a href="#features">功能</a>
+      <a href="#install">安裝</a>
+      <a href="#manual">使用說明</a>
+      <a href="#faq">常見問題</a>
+      <a href="#changelog">更新日記</a>
+      <a href="https://github.com/Chocochocococo/CoCo-Translate">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main id="top">
+  <div class="wrap hero">
+    <div>
+      <p class="eyebrow">Chrome ・ Firefox 瀏覽器擴充功能</p>
+      <h1>讀原文，<br>也讀得懂<span class="q">「</span>原文<span class="q">」</span>。</h1>
+      <div class="specimen" aria-label="雙語對照範例">
+        <p class="en">“Let’s read one more chapter before bed,” she said.</p>
+        <p class="zh"><span class="q">「</span>睡前再看一章吧。<span class="q">」</span>她說。</p>
+      </div>
+      <p class="lede">CoCo Translate 把譯文放在原文旁邊：整頁雙語對照、滑鼠一指就翻、查單字記生字、YouTube 整句雙語字幕。Google、Bing 免費就能用，也能接上你自己的 AI。</p>
+      <div class="actions">
+        <a class="btn primary" href="#install">免費安裝</a>
+        <a class="btn ghost" href="#features">看看有什麼功能</a>
+      </div>
+      <p class="facts"><span>版本 <span class="mono" data-version>1.7.1.1</span></span><span>開放原始碼</span><span>設定與金鑰只存在你的瀏覽器</span></p>
+    </div>
+    <figure>
+      <img class="shot-light" src="img/popup-light.png" alt="CoCo Translate 的彈出視窗：翻譯此頁按鈕、顯示方式、翻譯來源與各項開關" width="340" height="548">
+      <img class="shot-dark" src="img/popup-dark.png" alt="CoCo Translate 的彈出視窗（深色）" width="340" height="548">
+    </figure>
+  </div>
+
+  <section id="features">
+    <div class="wrap">
+      <div class="section-head">
+        <h2>為了看懂而設計，不只是翻過去</h2>
+        <p>機器翻譯難免漏翻或翻錯，所以 CoCo 預設讓原文和譯文放在一起，一邊讀一邊對照。</p>
+      </div>
+
+      <div class="feature">
+        <div class="text">
+          <h3>整頁雙語對照</h3>
+          <p>每一段原文下面接著譯文，段落裡的粗體、連結都保留。也可以切換成直接取代原文。</p>
+          <ul>
+            <li>整段一起翻，上下文連貫，不會一個字一個字拼湊</li>
+            <li>只翻畫面上看得到的段落，往下捲才翻下一段，省額度</li>
+            <li>繁中、日文的引號自動換成「」『』</li>
+            <li>術語表：人名、門派每次都翻成同一個譯名</li>
+          </ul>
+        </div>
+        <figure>
+          <img src="img/card-page.png" alt="英文角色卡網頁，每段英文下方顯示繁體中文譯文，引號換成「」" width="1145" height="756" loading="lazy">
+        </figure>
+      </div>
+
+      <div class="feature flip">
+        <div class="text">
+          <h3>選字就能查的單字卡</h3>
+          <p>選取文字會出現小工具列，可以翻譯、查字典、朗讀。單字卡依詞性列出多個意思，還有英英解釋和例句。</p>
+          <ul>
+            <li>一鍵加入生字本，連同網頁上的例句一起記下來</li>
+            <li>生字本可以匯出成 Anki 格式背單字</li>
+          </ul>
+        </div>
+        <figure>
+          <img class="shot-light" src="img/card-light.png" alt="單字卡：life 的音標、詞典的多個中文意思、英英解釋與例句" width="760" height="640" loading="lazy">
+          <img class="shot-dark" src="img/card-dark.png" alt="單字卡（深色）" width="760" height="640" loading="lazy">
+        </figure>
+      </div>
+
+      <div class="feature">
+        <div class="text">
+          <h3>YouTube 整句雙語字幕</h3>
+          <p>讀取整份字幕檔，把逐字冒出來的字幕合成完整的句子，先整批翻好，播放時一次顯示一整句。</p>
+          <ul>
+            <li>字幕側欄列出整部影片的原文和譯文，點一句就跳過去</li>
+            <li>影片上可選雙語、只譯文、只原文，或乾脆不顯示、只看側欄</li>
+            <li>字幕可以拖曳位置、調整大小</li>
+          </ul>
+        </div>
+        <figure>
+          <img src="img/youtube.webp" alt="NASA 影片上的整句雙語字幕，右側字幕側欄列出每一句的原文和譯文" width="1694" height="731" loading="lazy">
+        </figure>
+      </div>
+
+      <div class="feature flip">
+        <div class="text">
+          <h3>想用哪個翻譯，就用哪個</h3>
+          <p>滑鼠觸發和整頁翻譯可以分開選來源。整頁用免費的 Google，查句子用 AI，額度花在刀口上。</p>
+          <ul>
+            <li>Google、Bing 免金鑰；也支援 Google Cloud、DeepL</li>
+            <li>AI 翻譯支援 Ollama、OpenRouter、Gemini、Groq 等 OpenAI 相容服務</li>
+            <li>自訂 Prompt、自訂正規表達式修正譯文</li>
+          </ul>
+        </div>
+        <figure>
+          <img class="shot-light" src="img/options-sources-light.png" alt="設定頁的翻譯來源與 AI 設定" width="1100" height="900" loading="lazy">
+          <img class="shot-dark" src="img/options-sources-dark.png" alt="設定頁的翻譯來源與 AI 設定（深色）" width="1100" height="900" loading="lazy">
+        </figure>
+      </div>
+    </div>
+  </section>
+
+  <section id="install">
+    <div class="wrap">
+      <div class="section-head">
+        <h2>安裝</h2>
+        <p>目前沒有上架商店，從 GitHub 下載安裝檔。更新時照同樣步驟再裝一次，設定會保留下來。</p>
+      </div>
+      <div class="grid-2">
+        <div class="panel">
+          <h3>Chrome</h3>
+          <ol class="steps">
+            <li>到 <a href="https://github.com/Chocochocococo/CoCo-Translate">GitHub</a> 下載 Chrome 版的 zip，解壓縮成資料夾。</li>
+            <li>網址列輸入 <span class="mono">chrome://extensions</span>，打開右上角的「開發人員模式」。</li>
+            <li>點「載入未封裝項目」，選擇剛才的資料夾。</li>
+            <li>把 CoCo 釘選到工具列，完成。</li>
+          </ol>
+          <p class="note">更新時用新的檔案覆蓋舊資料夾，再到擴充功能頁按重新載入。</p>
+        </div>
+        <div class="panel">
+          <h3>Firefox</h3>
+          <ol class="steps">
+            <li>到 <a href="https://github.com/Chocochocococo/CoCo-Translate">GitHub</a> 下載 Firefox 版的 xpi 檔。</li>
+            <li>網址列輸入 <span class="mono">about:addons</span>，點右上角的齒輪。</li>
+            <li>選「從檔案安裝附加元件…」，選擇 xpi 檔。</li>
+            <li>按「新增」，完成。</li>
+          </ol>
+          <p class="note">更新時直接安裝新的 xpi，資料會保留下來。</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="manual">
+    <div class="wrap">
+      <div class="section-head">
+        <h2>使用說明</h2>
+        <p>彈出視窗放常用功能，細項都在設定頁。所有設定改了就存，不用按儲存。</p>
+      </div>
+
+      <div class="manual">
+        <div class="panel">
+          <h3>彈出視窗</h3>
+          <dl>
+            <dt>翻譯此頁／顯示原文</dt>
+            <dd>翻譯整個網頁，或還原成原文。按鈕上會顯示快捷鍵。</dd>
+            <dt>取代原文／雙語對照</dt>
+            <dd>整頁翻譯的顯示方式，翻譯中切換也會馬上重新排版。</dd>
+            <dt>翻譯來源、翻譯成</dt>
+            <dd>整頁翻譯用的來源和目標語言。選到還沒填金鑰的來源會直接提醒。</dd>
+            <dt>總是翻譯此網站</dt>
+            <dd>打開後，每次開啟這個網站都會自動翻譯。</dd>
+            <dt>滑鼠觸發翻譯</dt>
+            <dd>按住觸發鍵（預設右 Ctrl）指向段落，就在底下顯示譯文；再按一次收起。</dd>
+            <dt>YouTube 字幕</dt>
+            <dd>總開關，底下分開選影片上的字幕和字幕側欄。</dd>
+            <dt>右上角按鈕</dt>
+            <dd>切換外觀（自動、淺色、深色），齒輪開啟設定頁。</dd>
+          </dl>
+        </div>
+        <div class="panel">
+          <h3>設定頁</h3>
+          <dl>
+            <dt>一般</dt>
+            <dd>介面語言、外觀、整頁翻譯、快捷鍵、觸發鍵、選取工具列、右鍵選單、YouTube 字幕、本地快取。</dd>
+            <dt>翻譯來源與 AI</dt>
+            <dd>分開選滑鼠觸發和整頁翻譯的來源；填 API 金鑰、選 AI 模型、管理自訂 Prompt。</dd>
+            <dt>網站清單</dt>
+            <dd>管理總是翻譯的網站，可以用 <span class="mono">*.example.com</span> 包含所有子網域。</dd>
+            <dt>術語表</dt>
+            <dd>固定譯名，可以只套用在特定網站，也能匯出匯入。</dd>
+            <dt>生字本</dt>
+            <dd>單字卡收藏的生字，可以匯出到 Anki。</dd>
+            <dt>正規表達式</dt>
+            <dd>套用在每段譯文上的尋找與取代，例如把「韋步」統一改成「魏布」。</dd>
+          </dl>
+        </div>
+      </div>
+
+      <div class="section-head" style="margin-top: 48px; margin-bottom: 20px;">
+        <h3 style="font-size: 24px;">快捷鍵</h3>
+        <p>快捷鍵用瀏覽器內建的設定，可以改成別的組合，也可以清空停用，避免和其他擴充衝突。到設定頁「一般 → 整頁翻譯 → 快捷鍵」按「修改」。</p>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>動作</th><th>Windows／Linux</th><th>macOS</th></tr></thead>
+          <tbody>
+            <tr><td>翻譯此頁 ⇄ 顯示原文</td><td><kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>Y</kbd></td><td><kbd>Control</kbd> + <kbd>Shift</kbd> + <kbd>Y</kbd></td></tr>
+            <tr><td>切換取代原文 ⇄ 雙語對照</td><td colspan="2">預設沒有，可以自己設定</td></tr>
+            <tr><td>滑鼠觸發翻譯</td><td colspan="2">按住 <kbd>右 Ctrl</kbd> 指向段落（觸發鍵可在設定頁更換）</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="section-head" style="margin-top: 48px; margin-bottom: 20px;">
+        <h3 style="font-size: 24px;">翻譯來源</h3>
+        <p>建議整頁翻譯用 Google 或 Bing，AI 留給需要通順語感的地方，免費額度才撐得久。</p>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>來源</th><th>需要什麼</th><th>說明</th></tr></thead>
+          <tbody>
+            <tr><td>Google 翻譯</td><td><span class="tag">免金鑰</span></td><td>預設的來源，速度快，適合整頁翻譯和字幕。</td></tr>
+            <tr><td>Bing 翻譯</td><td><span class="tag">免金鑰</span></td><td>Google 的備案，偶爾會失敗，重試即可。</td></tr>
+            <tr><td>Google Cloud Translation</td><td><span class="tag key">API 金鑰</span></td><td>官方 API，支援本地快取。</td></tr>
+            <tr><td>DeepL API</td><td><span class="tag key">API 金鑰</span></td><td>有免費方案，金鑰結尾是 <span class="mono">:fx</span> 會自動用免費版網址。</td></tr>
+            <tr><td>Ollama Cloud</td><td><span class="tag key">API 金鑰</span></td><td>到 ollama.com 建立金鑰，免費方案一次一個請求。預設模型 <span class="mono">gemma4:31b</span>。</td></tr>
+            <tr><td>OpenRouter</td><td><span class="tag key">API 金鑰</span></td><td>名稱結尾是 <span class="mono">:free</span> 的模型免費，每天 50 次。</td></tr>
+            <tr><td>Google Gemini</td><td><span class="tag key">API 金鑰</span></td><td>到 aistudio.google.com 建立，Flash-Lite 系列有免費額度。</td></tr>
+            <tr><td>Groq</td><td><span class="tag key">API 金鑰</span></td><td>免費但每分鐘 token 少，不適合整頁翻譯。</td></tr>
+            <tr><td>本機 Ollama</td><td><span class="tag">免金鑰</span></td><td>在自己電腦上跑模型，沒有額度限制。</td></tr>
+            <tr><td>自訂</td><td><span class="tag key">看服務</span></td><td>任何 OpenAI 相容的 API，例如 LM Studio。</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section id="faq">
+    <div class="wrap faq">
+      <div class="section-head">
+        <h2>常見問題</h2>
+      </div>
+      <details>
+        <summary>YouTube 字幕沒有出現？</summary>
+        <p>影片的 CC 要開著，YouTube 開 CC 時才會下載字幕檔。影片上選了「不顯示」的話，CC 開著畫面上也不會有字幕，看右邊的字幕側欄就好。讀不到字幕檔時會改成翻譯畫面上正在顯示的 CC。</p>
+      </details>
+      <details>
+        <summary>API 金鑰會被傳到哪裡？</summary>
+        <p>金鑰只存在你的瀏覽器裡，翻譯時直接送到你選的翻譯服務，沒有經過其他伺服器。AI 翻譯的金鑰是每個供應商各存一份，切換供應商不會互相覆蓋。</p>
+      </details>
+      <details>
+        <summary>譯文裡的引號為什麼跟 Google 翻譯不一樣？</summary>
+        <p>翻成繁體中文和日文時，""、“” 和全形＂會自動換成「」，引號裡的引號換成『』。英文和韓文不換。</p>
+      </details>
+      <details>
+        <summary>單字卡的字典資料是哪裡來的？</summary>
+        <p>多個中文意思來自 Google 翻譯的字典資料，英英解釋和例句來自 Free Dictionary（資料來源是維基詞典，只有英文）。最上面那行譯文，則是用「滑鼠觸發與選取翻譯」的翻譯來源翻出來的。</p>
+      </details>
+      <details>
+        <summary>用 AI 整頁翻譯，額度一下就用完了？</summary>
+        <p>整頁翻譯一次會送出很多段文字。建議整頁翻譯用 Google 或 Bing，AI 留給滑鼠觸發翻譯；或改用本機 Ollama，沒有額度限制。</p>
+      </details>
+      <details>
+        <summary>快捷鍵跟其他擴充衝突了？</summary>
+        <p>到設定頁「一般 → 整頁翻譯 → 快捷鍵」按「修改」，會打開瀏覽器的快捷鍵設定，可以換成別的組合，或清空停用。</p>
+      </details>
+      <details>
+        <summary>怎麼清除存下來的譯文？</summary>
+        <p>設定頁「一般 → 進階」，按「清除快取」。只有打開「把譯文存在電腦上」時才會存。</p>
+      </details>
+      <details>
+        <summary>為什麼不能只翻譯選取的那幾個字？</summary>
+        <p>因為 CoCo 一次翻一整段，上下文才對得上。只想查一個字的話，選取後按工具列的 📖 開單字卡。</p>
+      </details>
+    </div>
+  </section>
+
+  <section id="changelog">
+    <div class="wrap log">
+      <div class="section-head">
+        <h2>更新日記</h2>
+        <p>從 1.5 開始整個重寫，下面是每一版改了什麼。</p>
+      </div>
+
+      <article class="release">
+        <p class="when"><span class="mono">1.7.1.1</span>2026/9/26</p>
+        <div>
+          <ul>
+            <li>官網搬到 GitHub Pages，舊的說明文件停用。</li>
+            <li>修正：YouTube 字幕的「&gt;&gt;」（換人講話）和「[applause]」這類音效標記不會再黏在句子裡。</li>
+            <li>修正：雙語對照時，譯文和原文一樣（例如人名）不會重複顯示。</li>
+          </ul>
+        </div>
+      </article>
+
+      <article class="release">
+        <p class="when"><span class="mono">1.7.1.0</span>2026/9/26</p>
+        <div>
+          <ul>
+            <li>增加：YouTube 影片上的字幕可選雙語、只譯文、只原文或不顯示；字幕側欄可以單獨開關。</li>
+            <li>修正：關掉 CC 時，字幕側欄照樣標示正在播放的句子。</li>
+            <li>修正：繁中和日文譯文裡的全形＂、跨行的引號、單引號、跨段落對話的引號，都會換成「」『』。</li>
+            <li>修正：工具列圖示的尺寸設定。</li>
+          </ul>
+        </div>
+      </article>
+
+      <article class="release">
+        <p class="when"><span class="mono">1.7.0.0</span>2026/9/26</p>
+        <div>
+          <ul>
+            <li>增加：YouTube 整句雙語字幕。讀取整份字幕檔，合成完整的句子先整批翻好，播放時一次顯示一整句。</li>
+            <li>增加：YouTube 字幕側欄，列出整部影片的原文和譯文，點一句就跳過去，選字可以查單字。</li>
+            <li>增加：單字卡變成真正的字典，依詞性列出多個意思，還有英英解釋和例句。</li>
+            <li>修改：生字本匯出 Anki 時多了「字典的意思」一欄。</li>
+          </ul>
+        </div>
+      </article>
+
+      <article class="release">
+        <p class="when"><span class="mono">1.6.1.0</span>2026/9/25</p>
+        <div>
+          <ul>
+            <li>增加：YouTube 字幕可以直接拖曳位置、調整大小，按兩下回到原本 CC 的位置。</li>
+            <li>修正：YouTube 的舊字幕黏在畫面上，關掉 CC 後還在。</li>
+            <li>修正：單字卡一直顯示「查詢中」。所有翻譯請求加上逾時，不會無限等待。</li>
+          </ul>
+        </div>
+      </article>
+
+      <article class="release">
+        <p class="when"><span class="mono">1.6.0.0</span>2026/9/25</p>
+        <div>
+          <ul>
+            <li>全新介面：彈出視窗改成常用功能面板，細項設定都搬到設定頁；所有設定改了就存。</li>
+            <li>增加：深色模式，可以跟隨系統或手動切換；網頁上的工具列、單字卡也會跟著變。</li>
+            <li>修改：YouTube 字幕改成一個字幕框，不再和原本的 CC 疊在一起。</li>
+            <li>修正：Firefox 的彈出視窗下方被擋住。</li>
+            <li>修正：翻譯服務暫時出錯時會自動重試，錯誤提示不會再塞滿一整頁的 HTML。</li>
+          </ul>
+        </div>
+      </article>
+
+      <article class="release">
+        <p class="when"><span class="mono">1.5.0.0</span>2026/9/25</p>
+        <div>
+          <h3>大改版</h3>
+          <ul>
+            <li>程式重寫：Chrome 和 Firefox 共用同一份程式碼，翻譯統一交給背景處理。</li>
+            <li>增加 AI 翻譯來源：Ollama Cloud、OpenRouter、Google Gemini、Groq、本機 Ollama，以及任何 OpenAI 相容的服務（Mistral 也移到這裡）。AI 翻譯不再使用預填充。</li>
+            <li>修改：整頁翻譯改成一次翻一整段，上下文更連貫；只翻畫面附近的段落，往下捲才翻。</li>
+            <li>修改：程式碼區塊、編輯器裡的預設文字也會翻譯。</li>
+            <li>增加：整頁翻譯的雙語對照模式。</li>
+            <li>增加：快捷鍵（預設 Alt+Shift+Y），可以自訂或停用。</li>
+            <li>增加：設定頁的網站清單（支援 *.example.com）、術語表、生字本。</li>
+            <li>增加：選取工具列（翻譯、查單字、朗讀）、單字卡，生字本可以匯出成 Anki 格式。</li>
+            <li>增加：YouTube 雙語字幕。</li>
+            <li>修正：「總是翻譯此網站」的多個問題；更新擴充功能時不會再洗掉設定。</li>
+          </ul>
+        </div>
+      </article>
+
+      <details class="older">
+        <summary>1.4 以前的更新日記</summary>
+
+        <article class="release">
+          <p class="when">2025/7/13</p>
+          <div><ul><li>修正開啟擴充會被 Cloudflare 真人驗證阻擋的問題。</li></ul></div>
+        </article>
+
+        <article class="release">
+          <p class="when">2025/3/25</p>
+          <div><ul>
+            <li>修改功能：使用新的 Google Translate API。</li>
+            <li>修正錯誤：Page Translate 的自動翻譯不會向 Mistral API 請求翻譯了。</li>
+          </ul></div>
+        </article>
+
+        <article class="release">
+          <p class="when">2025/3/19</p>
+          <div><ul>
+            <li>增加功能：
+              <ul>
+                <li>可拖曳輸入翻譯懸浮按鈕。</li>
+                <li>觸發式翻譯與輸入翻譯會在等待時顯示 Loading 圖示。</li>
+              </ul>
+            </li>
+            <li>修改功能：
+              <ul>
+                <li>將整頁翻譯與觸發式翻譯的 API 分開，可選擇不同翻譯來源了。</li>
+                <li>在 Mistral AI 的 User 訊息加入翻譯 prompt，盡量避免 AI 自由發揮。</li>
+                <li>Google API 改為正確產品名稱 Cloud Translation／Cloud API。</li>
+                <li>修改 UI。</li>
+              </ul>
+            </li>
+            <li>修正錯誤：本地快取的譯文已經能正確刪除預填充內容。</li>
+          </ul></div>
+        </article>
+
+        <article class="release">
+          <p class="when">2025/2/26</p>
+          <div><ul>
+            <li>增加 Mistral AI 自訂多組 Prompt 功能。</li>
+            <li>加強 Mistral AI 預設 Prompt 的翻譯功能，希望盡量避免單獨問句被 AI 當成問題回覆。</li>
+          </ul></div>
+        </article>
+
+        <article class="release">
+          <p class="when">2025/2/23</p>
+          <div><ul>
+            <li>修正 Mistral AI 未顯示譯文或顯示譯文不完整的問題。</li>
+            <li>修正 Mistral AI 輸入翻譯會出現特殊標籤的問題。</li>
+          </ul></div>
+        </article>
+
+        <article class="release">
+          <p class="when">2025/2/21</p>
+          <div><ul>
+            <li>增加翻譯服務來源：Google Cloud Translation、DeepL API、Mistral AI。</li>
+            <li>增加本地快取功能，僅提供 API 翻譯服務使用。</li>
+            <li>修改介面，並增加設定儲存提示。</li>
+            <li>修改輸入翻譯功能，從即時翻譯改為觸發翻譯。</li>
+            <li>修正正規表達式分頁顯示問題。</li>
+          </ul></div>
+        </article>
+
+        <article class="release">
+          <p class="when">2025/2/6</p>
+          <div><ul>
+            <li>增加功能：
+              <ul>
+                <li>可選擇是否啟用額外的自訂右鍵選單。</li>
+                <li>可選擇是否啟用整個自訂正規表達式功能。</li>
+                <li>彈出視窗增加中文介面，並修改介面。</li>
+              </ul>
+            </li>
+            <li>修正功能：
+              <ul>
+                <li>Firefox 可以正確匯入正規表達式了。</li>
+                <li>Input Translate 懸浮按鈕不會出現在子視窗了。</li>
+                <li>觸發翻譯的懸浮按鈕在點擊翻譯時會正確消失了。</li>
+                <li>Page Translate 的翻譯範圍擴大了。</li>
+              </ul>
+            </li>
+          </ul></div>
+        </article>
+
+        <article class="release">
+          <p class="when">2025/2/2</p>
+          <div><ul>
+            <li>增加翻譯服務來源：Bing。</li>
+            <li>增加功能：
+              <ul>
+                <li>開啟 Page Translate 時，會以提示框自動顯示滑鼠經過的段落原文。</li>
+                <li>可選擇不顯示觸發翻譯的懸浮按鈕了。</li>
+              </ul>
+            </li>
+            <li>修正功能：
+              <ul>
+                <li>關閉觸發翻譯功能時，工具列圖示會變紅了。</li>
+                <li>Input Box 的內容不會被 Page Translate 功能翻譯了。</li>
+                <li>使用 Chrome 開啟 SillyTavern 時，也能使用 Page Translate 了。</li>
+                <li>譯文將儲存至快取資料，直到關閉網頁。</li>
+              </ul>
+            </li>
+            <li>已知的新錯誤：使用 Page Translate 功能時，翻譯速度較慢。</li>
+          </ul></div>
+        </article>
+
+        <article class="release">
+          <p class="when">2025/1/11</p>
+          <div><ul><li>修正 Firefox 重啟瀏覽器後右鍵選單會消失的問題了。</li></ul></div>
+        </article>
+
+        <article class="release">
+          <p class="when">2025/1/9</p>
+          <div><ul>
+            <li>改版了，現在是可可翻譯～CoCo Translate～ver.1！</li>
+            <li>更換所有圖示了。</li>
+            <li>更改部分功能名稱，統一為英文了。</li>
+            <li>更改彈出視窗的排版了。</li>
+            <li>刪除韓文譯文的””替代了。</li>
+            <li>增加右鍵選單的選項了。</li>
+            <li>增加功能了：Always translate this site、輸入文字翻譯框、匯出及匯入正規表達式。</li>
+            <li>已知錯誤：
+              <ul>
+                <li>開啟 Page Translate 時，輸入文字翻譯框的文字也會被翻譯。</li>
+                <li>關閉觸發翻譯功能時，Firefox 版本的工具列圖示不會改變。（修不好QAQ）</li>
+              </ul>
+            </li>
+          </ul></div>
+        </article>
+      </details>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>CoCo Translate <span class="mono" data-version>1.7.1.1</span></span>
+    <a href="https://github.com/Chocochocococo/CoCo-Translate">GitHub 原始碼</a>
+    <span class="made">一個看不懂英文的人，和 AI 一起寫出來的翻譯擴充。</span>
+  </div>
+</footer>
+</body>
+</html>

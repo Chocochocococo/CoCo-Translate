@@ -294,7 +294,7 @@ test('PostProcess: 砍掉模型自己加的開場白，但不誤砍譯文', () =
 });
 
 // ---------------------------------------------------------------- 字典
-test('Dictionary.lookup: 取出音標與前幾個解釋，非英文單字不查', async () => {
+test('Dictionary.lookup: 只有 Free Dictionary 時取出音標與解釋；查不到回傳 null；查過的字會快取', async () => {
   const { context, fetchCalls } = loadBackground({
     fetch: async url => url.endsWith('/fox')
       ? jsonResponse([{
@@ -308,18 +308,17 @@ test('Dictionary.lookup: 取出音標與前幾個解釋，非英文單字不查'
       : new Response('{"title":"No Definitions Found"}', { status: 404 })
   });
   const result = plain(await context.Dictionary.lookup('Fox'));
-  assert.deepEqual(result, {
-    phonetic: '/fɒks/',
-    meanings: [
-      { partOfSpeech: 'noun', definition: 'A small wild canine.' },
-      { partOfSpeech: 'verb', definition: 'To trick or fool.' }
-    ]
-  });
+  assert.equal(result.phonetic, '/fɒks/');
+  assert.deepEqual(result.meanings, [
+    { partOfSpeech: 'noun', definition: 'A small wild canine.' },
+    { partOfSpeech: 'verb', definition: 'To trick or fool.' }
+  ]);
   assert.equal(await context.Dictionary.lookup('asdfqwer'), null);
   assert.equal(await context.Dictionary.lookup('林楓'), null);
-  assert.equal(await context.Dictionary.lookup('two words'), null);
+  const callsBefore = fetchCalls.length;
   await context.Dictionary.lookup('fox');
-  assert.equal(fetchCalls.length, 2, '查過的字要快取，非英文單字不送出');
+  assert.equal(fetchCalls.length, callsBefore, '查過的字要快取');
+  assert.ok(!fetchCalls.some(call => call.url.includes('dictionaryapi.dev') && call.url.includes('%E6%9E%97')), '非英文不查英英字典');
 });
 
 test('OpenAICompatibleTranslator: Gemini / Groq 預設值，Gemini 模型清單拿掉 models/ 前綴', async () => {
@@ -402,6 +401,86 @@ test('safeFetch: 連線卡住時逾時變成 network 錯誤，而且不重試', 
 
 test('Dictionary: 字典伺服器卡住時回傳 null，不會一直等', async () => {
   const { context } = loadBackground({ fetch: hangingFetch });
-  const result = await context.Dictionary.lookup('serendipity', 50);
+  const result = await context.Dictionary.lookup('serendipity', 'zh-TW', 50);
   assert.equal(result, null);
+});
+
+// ---------------------------------------------------------------- 字典
+// Google 翻譯網站的字典資料（dj=1 格式）
+const GOOGLE_LIFE = {
+  sentences: [{ trans: '生活', orig: 'life' }, { src_translit: 'līf' }],
+  dict: [
+    { pos: '名詞', terms: ['生活', '生命', '人生'], entry: [{ word: '生活', score: 0.3 }, { word: '生命', score: 0.2 }, { word: '人生', score: 0.1 }] },
+    { pos: '形容詞', terms: ['終身的'], entry: [{ word: '終身的', score: 0.01 }] }
+  ],
+  src: 'en',
+  definitions: [{ pos: 'noun', entry: [{ gloss: 'the condition that distinguishes animals and plants from inorganic matter', example: 'the origins of life' }] }]
+};
+// Free Dictionary：同一個字可能有好幾筆
+const FREE_LIFE = [
+  { word: 'life', phonetic: '/laɪf/', meanings: [
+    { partOfSpeech: 'noun', definitions: [
+      { definition: 'The state of organisms preceding their death.', example: 'Life is precious.' },
+      { definition: 'The period during which an individual is alive.' },
+      { definition: 'Third sense.' },
+      { definition: 'Fourth sense, over the limit.' }
+    ] },
+    { partOfSpeech: 'verb', definitions: [] }
+  ] },
+  { word: 'life', meanings: [{ partOfSpeech: 'adjective', definitions: [{ definition: 'Lasting a lifetime.' }] }] }
+];
+
+const dictionaryFetch = ({ google = GOOGLE_LIFE, free = FREE_LIFE } = {}) => async url => {
+  if (url.startsWith('https://translate.googleapis.com/')) {
+    return google ? jsonResponse(google) : new Response('<html>Sorry...</html>', { status: 429 });
+  }
+  if (url.startsWith('https://api.dictionaryapi.dev/')) {
+    return free ? jsonResponse(free) : jsonResponse({ title: 'No Definitions Found' }, 404);
+  }
+  throw new Error('unexpected ' + url);
+};
+
+test('Dictionary: 雙語詞典依詞性列出多個意思，英英解釋每個詞性多條＋例句', async () => {
+  const { context, fetchCalls } = loadBackground({ fetch: dictionaryFetch() });
+  const result = plain(await context.Dictionary.lookup('life', 'zh-TW'));
+  assert.equal(result.phonetic, '/laɪf/');
+  assert.deepEqual(result.bilingual, [
+    { pos: '名詞', terms: ['生活', '生命', '人生'] },
+    { pos: '形容詞', terms: ['終身的'] }
+  ]);
+  // Free Dictionary 比較完整，優先用；每個詞性最多 3 條
+  assert.deepEqual(result.definitions.map(group => group.pos), ['noun', 'adjective']);
+  assert.equal(result.definitions[0].items.length, 3);
+  assert.deepEqual(result.definitions[0].items[0], { definition: 'The state of organisms preceding their death.', example: 'Life is precious.' });
+  const googleCall = new URL(fetchCalls.find(call => call.url.includes('googleapis')).url);
+  assert.equal(googleCall.searchParams.get('tl'), 'zh-TW');
+  assert.equal(googleCall.searchParams.get('q'), 'life');
+  assert.ok(googleCall.searchParams.getAll('dt').includes('bd'));
+});
+
+test('Dictionary: Google 被擋時照樣顯示英英解釋', async () => {
+  const { context } = loadBackground({ fetch: dictionaryFetch({ google: null }) });
+  const result = plain(await context.Dictionary.lookup('life', 'zh-TW'));
+  assert.deepEqual(result.bilingual, []);
+  assert.equal(result.definitions[0].items[0].definition, 'The state of organisms preceding their death.');
+});
+
+test('Dictionary: Free Dictionary 查不到時改用 Google 的英英解釋', async () => {
+  const { context } = loadBackground({ fetch: dictionaryFetch({ free: null }) });
+  const result = plain(await context.Dictionary.lookup('life', 'zh-TW'));
+  assert.equal(result.phonetic, 'līf');
+  assert.deepEqual(result.definitions, [{ pos: 'noun', items: [{
+    definition: 'the condition that distinguishes animals and plants from inorganic matter', example: 'the origins of life'
+  }] }]);
+  assert.equal(result.bilingual.length, 2);
+});
+
+test('Dictionary: 日文單字只查 Google，不查英英；整句話不查字典', async () => {
+  const { context, fetchCalls } = loadBackground({ fetch: dictionaryFetch() });
+  await context.Dictionary.lookup('猫', 'zh-TW');
+  assert.equal(fetchCalls.length, 1);
+  assert.ok(fetchCalls[0].url.includes('googleapis'));
+  const sentence = await context.Dictionary.lookup('This is a whole sentence that nobody would look up in a dictionary.', 'zh-TW');
+  assert.equal(sentence, null);
+  assert.equal(fetchCalls.length, 1);
 });

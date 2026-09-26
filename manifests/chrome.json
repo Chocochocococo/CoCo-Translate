@@ -41,7 +41,9 @@
       "js": [
         "markup.js",
         "sitePatterns.js",
-        "content.js"
+        "captions.js",
+        "content.js",
+        "youtube.js"
       ],
       "run_at": "document_end",
       "all_frames": false

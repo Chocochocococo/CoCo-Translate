@@ -122,7 +122,7 @@ const asyncHandlers = {
 
   // 單字卡的英文字典（音標、解釋）。譯文另外走 TRANSLATE_BATCH，兩邊誰先回來誰先顯示，
   // 別讓其中一邊卡住整張卡片一直「查詢中」
-  LOOKUP_DICTIONARY: async message => ({ dictionary: await Dictionary.lookup(message.word) }),
+  LOOKUP_DICTIONARY: async message => ({ dictionary: await Dictionary.lookup(message.word, message.targetLang) }),
 
   LIST_LLM_MODELS: async message => {
     try {

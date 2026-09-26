@@ -10,6 +10,8 @@ import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
 
 const require = createRequire(import.meta.url);
+// 讓 context.route 也攔得到擴充功能 service worker 送出的請求（字典用假的資料）
+process.env.PW_EXPERIMENTAL_SERVICE_WORKER_NETWORK_EVENTS = '1';
 const { chromium } = (() => {
   try {
     return require('playwright');
@@ -452,11 +454,34 @@ try {
     const actions = await page.$$eval('#coco-selection-toolbar button', bs => bs.filter(b => b.style.display !== 'none').map(b => b.dataset.action));
     assert.deepEqual(actions, ['translate', 'lookup', 'speak']);
   });
+  // 假的字典資料：Google 雙語詞典＋Free Dictionary 英英解釋
+  await context.route('https://translate.googleapis.com/translate_a/single**', route => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({
+      sentences: [{ trans: '意外發現', orig: 'serendipity' }],
+      dict: [{ pos: '名詞', terms: ['意外發現', '機緣巧合'], entry: [{ word: '意外發現' }, { word: '機緣巧合' }, { word: '偶然發現珍寶的運氣' }] }],
+      src: 'en'
+    })
+  }));
+  await context.route('https://api.dictionaryapi.dev/**', route => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify([{ word: 'serendipity', phonetic: '/ˌsɛɹ.ənˈdɪp.ɪ.ti/', meanings: [{ partOfSpeech: 'noun', definitions: [
+      { definition: 'An unsought, unintended, and unexpected, but fortunate, discovery.', example: 'It was pure serendipity.' },
+      { definition: 'The faculty of making such discoveries.' }
+    ] }] }])
+  }));
   await page.click('#coco-selection-toolbar button[data-action="speak"]');
   await page.click('#coco-selection-toolbar button[data-action="lookup"]');
   await check('單字卡：顯示譯文與例句', async () => {
     await page.waitForFunction(() => document.querySelector('#coco-word-card .coco-word-translation')?.textContent === '[譯]serendipity', null, { timeout: 3000 });
     assert.match(await page.textContent('#coco-word-card'), /Books are full of serendipity\./);
+  });
+  await check('單字卡：字典依詞性列出多個意思，英英解釋有多條和例句', async () => {
+    await page.waitForSelector('#coco-word-card .coco-dict-sense', { timeout: 3000 });
+    assert.equal(await page.textContent('#coco-word-card .coco-dict-sense'), '名詞意外發現、機緣巧合、偶然發現珍寶的運氣');
+    assert.equal(await page.textContent('#coco-word-card .coco-phonetic'), '/ˌsɛɹ.ənˈdɪp.ɪ.ti/');
+    assert.equal(await page.locator('#coco-word-card .coco-dict-definition li').count(), 2);
+    assert.match(await page.textContent('#coco-word-card .coco-dict-definition'), /名詞.*unexpected, but fortunate.*“It was pure serendipity\.”/s);
   });
   await page.click('#coco-word-card .coco-save-word');
   await check('單字卡：加入生字本', async () => {
@@ -466,6 +491,7 @@ try {
     assert.equal(vocabulary[0].word, 'serendipity');
     assert.equal(vocabulary[0].translation, '[譯]serendipity');
     assert.equal(vocabulary[0].context, 'Books are full of serendipity.');
+    assert.equal(vocabulary[0].meanings, '名詞 意外發現、機緣巧合、偶然發現珍寶的運氣');
   });
   // 外觀：網頁裡的工具列、單字卡跟 popup 同一個設定
   const cocoColors = () => page.evaluate(() => ({
@@ -510,14 +536,54 @@ try {
     const content = fs.readFileSync(await download.path(), 'utf8');
     const lines = content.trim().split('\n');
     assert.equal(lines[0], '#separator:tab');
-    assert.equal(lines[2], '#columns:Word\tTranslation\tPhonetic\tContext\tSource');
-    assert.deepEqual(lines[3].split('\t').slice(0, 4), ['serendipity', '[譯]serendipity', '', 'Books are full of serendipity.']);
+    assert.equal(lines[2], '#columns:Word\tTranslation\tPhonetic\tContext\tSource\tMeanings');
+    const fields = lines[3].split('\t');
+    assert.deepEqual(fields.slice(0, 4), ['serendipity', '[譯]serendipity', '/ˌsɛɹ.ənˈdɪp.ɪ.ti/', 'Books are full of serendipity.']);
+    assert.equal(fields[5], '名詞 意外發現、機緣巧合、偶然發現珍寶的運氣');
   });
   await vocabPage.close();
   await sw.evaluate(() => chrome.storage.local.set({ vocabulary: [] }));
 
   // 7-5. YouTube 雙語字幕（假的 YouTube 播放器，結構跟真的一樣）
-  await context.route('https://www.youtube.com/**', route => route.fulfill({
+  // 整句模式用的假字幕檔（json3，自動產生的字幕：一個字一段）
+  const timedtextRequests = [];
+  const CAPTION_FILE = { events: [
+    { tStartMs: 0, dDurationMs: 4000, segs: [
+      { utf8: 'Today' }, { utf8: ' we', tOffsetMs: 400 }, { utf8: ' will', tOffsetMs: 800 },
+      { utf8: ' learn', tOffsetMs: 1200 }, { utf8: ' about', tOffsetMs: 1600 }, { utf8: ' foxes.', tOffsetMs: 2000 }
+    ] },
+    { tStartMs: 2600, dDurationMs: 3000, segs: [
+      { utf8: 'They' }, { utf8: ' are', tOffsetMs: 300 }, { utf8: ' clever', tOffsetMs: 600 }, { utf8: ' animals.', tOffsetMs: 900 }
+    ] },
+    { tStartMs: 10000, dDurationMs: 2000, segs: [{ utf8: 'Goodbye everyone' }] }
+  ] };
+  const SENTENCE_PAGE = `<!doctype html><html><body>
+    <div id="columns" style="display:flex;gap:16px">
+      <div id="primary">
+        <div id="movie_player" class="html5-video-player" style="position:relative;width:640px;height:360px;background:#000">
+          <video style="width:100%;height:100%"></video>
+          <div class="ytp-caption-window-container">
+            <div class="caption-window ytp-caption-window-bottom" style="position:absolute;bottom:20px;left:50%;transform:translateX(-50%)">
+              <span class="captions-text"><span class="caption-visual-line"><span class="ytp-caption-segment" style="font-size:20px">Today we</span></span></span>
+            </div>
+          </div>
+          <button class="ytp-subtitles-button" aria-pressed="true">CC</button>
+        </div>
+      </div>
+      <div id="secondary" style="width:400px"><div id="secondary-inner"><div id="related">Related videos</div></div></div>
+    </div>
+    <script>
+      // 播放器開 CC 時自己下載字幕檔（帶著 YouTube 的驗證參數，而且要的是 YouTube 自動翻成日文的版本）
+      fetch('/api/timedtext?v=sentences&lang=en&kind=asr&fmt=srv3&tlang=ja&pot=TOKEN123');
+    </script></body></html>`;
+  await context.route('https://www.youtube.com/**', route => {
+    const url = route.request().url();
+    if (url.includes('/api/timedtext')) {
+      timedtextRequests.push(url);
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(CAPTION_FILE) });
+    }
+    if (url.includes('v=sentences')) return route.fulfill({ status: 200, contentType: 'text/html', body: SENTENCE_PAGE });
+    return route.fulfill({
     status: 200,
     contentType: 'text/html',
     body: `<!doctype html><html><body>
@@ -539,7 +605,8 @@ try {
         document.getElementById('movie_player').addEventListener('click', () => window.playerClicks++);
         document.getElementById('movie_player').addEventListener('dblclick', () => window.playerClicks++);
       </script></body></html>`
-  }));
+    });
+  });
   const yt = await context.newPage();
   yt.on('pageerror', err => errors.push('youtube pageerror: ' + err.message));
   await yt.goto('https://www.youtube.com/watch?v=test');
@@ -674,6 +741,100 @@ try {
     assert.equal(await yt.evaluate(() => getComputedStyle(document.querySelector('.ytp-caption-window-container')).opacity), '1');
   });
   await yt.close();
+
+  // 7-6. YouTube 整句模式＋字幕側欄（讀整份字幕檔）
+  await sw.evaluate(() => chrome.storage.local.set({ enableYouTubeSubtitles: true, youTubeSubtitleMode: 'bilingual' }));
+  const llmBeforeSentences = llmRequests.length;
+  const yt2 = await context.newPage();
+  yt2.on('pageerror', err => errors.push('youtube sentences pageerror: ' + err.message));
+  await yt2.goto('https://www.youtube.com/watch?v=sentences');
+  const seek = seconds => yt2.evaluate(s => { document.querySelector('video').currentTime = s; }, seconds);
+  const boxText = () => yt2.evaluate(() => ({
+    original: document.querySelector('#coco-yt-subtitle .coco-yt-original')?.textContent,
+    translated: document.querySelector('#coco-yt-subtitle .coco-yt-translated')?.textContent,
+    shown: document.querySelector('#coco-yt-subtitle')?.style.display === 'block'
+  }));
+  await seek(0.5);
+  await check('YouTube 整句：讀整份字幕檔，一次顯示一整句（原文＋譯文）', async () => {
+    await yt2.waitForFunction(() => document.querySelector('#coco-yt-subtitle .coco-yt-translated')?.textContent === '[譯]Today we will learn about foxes.', null, { timeout: 5000 });
+    assert.equal((await boxText()).original, 'Today we will learn about foxes.');
+  });
+  await check('YouTube 整句：重新下載字幕檔時改要 json3、拿掉 YouTube 的自動翻譯、保留驗證參數', async () => {
+    const ours = timedtextRequests.map(u => new URL(u)).find(u => u.searchParams.get('fmt') === 'json3');
+    assert.ok(ours, '應該用 json3 重新下載');
+    assert.equal(ours.searchParams.get('tlang'), null);
+    assert.equal(ours.searchParams.get('pot'), 'TOKEN123');
+  });
+  await check('YouTube 整句：一開始就整批翻好（三句在同一個請求）', async () => {
+    const requests = llmRequests.slice(llmBeforeSentences).filter(r => JSON.stringify(r).includes('foxes'));
+    assert.equal(requests.length, 1);
+    assert.match(JSON.stringify(requests[0]), /Goodbye everyone/);
+  });
+  // 畫面上的 CC 一直冒字也不影響
+  await yt2.evaluate(() => { document.querySelector('.ytp-caption-segment').textContent = 'Today we will'; });
+  await check('YouTube 整句：畫面上的 CC 一直變，字幕框不會跟著跳', async () => {
+    await yt2.waitForTimeout(800);
+    assert.equal((await boxText()).original, 'Today we will learn about foxes.');
+  });
+  await seek(3);
+  await check('YouTube 整句：照影片時間換下一句', async () => {
+    await yt2.waitForFunction(() => document.querySelector('#coco-yt-subtitle .coco-yt-original')?.textContent === 'They are clever animals.', null, { timeout: 2000 });
+    assert.equal((await boxText()).translated, '[譯]They are clever animals.');
+  });
+  await seek(8);
+  await check('YouTube 整句：兩句中間停很久的地方不顯示', async () => {
+    await yt2.waitForFunction(() => document.querySelector('#coco-yt-subtitle').style.display === 'none', null, { timeout: 2000 });
+  });
+  await check('YouTube 字幕側欄：放在右邊那一欄最上面，列出每一句的原文和譯文', async () => {
+    await yt2.waitForSelector('#secondary-inner > #coco-yt-transcript:first-child', { timeout: 3000 });
+    assert.equal(await yt2.locator('#coco-yt-transcript .coco-yt-line').count(), 3);
+    assert.deepEqual(await yt2.$$eval('#coco-yt-transcript .coco-yt-line-translation', cells => cells.map(c => c.textContent)),
+      ['[譯]Today we will learn about foxes.', '[譯]They are clever animals.', '[譯]Goodbye everyone']);
+  });
+  await yt2.click('#coco-yt-transcript .coco-yt-line[data-index="2"]');
+  await check('YouTube 字幕側欄：點一句就跳到那個時間，正在播的那句會標亮', async () => {
+    assert.equal(await yt2.evaluate(() => document.querySelector('video').currentTime), 10);
+    await yt2.waitForFunction(() => document.querySelector('#coco-yt-subtitle .coco-yt-original')?.textContent === 'Goodbye everyone', null, { timeout: 2000 });
+    assert.equal(await yt2.getAttribute('#coco-yt-transcript .coco-yt-line[data-index="2"]', 'data-active'), 'true');
+  });
+  // 在側欄選一個字：出現工具列（查字典、朗讀），沒有「翻譯這一段」
+  const clever = await yt2.evaluate(() => {
+    const node = document.querySelector('#coco-yt-transcript .coco-yt-line[data-index="1"] .coco-yt-line-original').firstChild;
+    const start = node.textContent.indexOf('clever');
+    const range = document.createRange();
+    range.setStart(node, start);
+    range.setEnd(node, start + 6);
+    getSelection().removeAllRanges();
+    getSelection().addRange(range);
+    const rect = range.getBoundingClientRect();
+    return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+  });
+  await yt2.mouse.move(clever.x, clever.y);
+  await yt2.evaluate(() => document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true })));
+  await check('YouTube 字幕側欄：選字可以查單字，不會出現翻譯段落的按鈕', async () => {
+    await yt2.waitForSelector('#coco-selection-toolbar', { state: 'visible', timeout: 3000 });
+    const actions = await yt2.$$eval('#coco-selection-toolbar button', bs => bs.filter(b => b.style.display !== 'none').map(b => b.dataset.action));
+    assert.deepEqual(actions, ['lookup', 'speak']);
+  });
+  await yt2.evaluate(() => getSelection().removeAllRanges());
+  await yt2.evaluate(() => document.querySelector('.ytp-subtitles-button').setAttribute('aria-pressed', 'false'));
+  await check('YouTube 整句：關掉 CC 就不顯示', async () => {
+    await yt2.waitForFunction(() => document.querySelector('#coco-yt-subtitle').style.display === 'none', null, { timeout: 2000 });
+  });
+  await yt2.evaluate(() => document.querySelector('.ytp-subtitles-button').setAttribute('aria-pressed', 'true'));
+  await yt2.click('#coco-yt-transcript .coco-yt-transcript-close');
+  await check('YouTube 字幕側欄：按 × 關閉，設定會記住；在設定頁打開又會出現', async () => {
+    await yt2.waitForFunction(() => !document.querySelector('#coco-yt-transcript'), null, { timeout: 2000 });
+    const { youTubeTranscriptPanel } = await sw.evaluate(() => chrome.storage.local.get('youTubeTranscriptPanel'));
+    assert.equal(youTubeTranscriptPanel, false);
+    await sw.evaluate(() => chrome.storage.local.set({ youTubeTranscriptPanel: true }));
+    await yt2.waitForSelector('#coco-yt-transcript', { timeout: 2000 });
+  });
+  await sw.evaluate(() => chrome.storage.local.set({ enableYouTubeSubtitles: false }));
+  await check('YouTube 整句：關閉字幕翻譯後，字幕框和側欄都移除', async () => {
+    await yt2.waitForFunction(() => !document.querySelector('#coco-yt-subtitle') && !document.querySelector('#coco-yt-transcript'), null, { timeout: 2000 });
+  });
+  await yt2.close();
 
   // 8. 設定頁：翻譯來源與 AI
   const settings = await context.newPage();

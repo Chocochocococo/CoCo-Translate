@@ -57,6 +57,7 @@ export function loadBackground({ storage = {}, fetch } = {}) {
     TextEncoder,
     TextDecoder,
     URL,
+    URLSearchParams,
     structuredClone,
     AbortSignal,
     AbortController,

@@ -32,6 +32,7 @@ const PAGE = `<!doctype html><html translate="no"><head><style>p { color: black;
   <p id="p2">The quick brown fox</p>
   <p id="num">42</p>
   <p id="code">Run <code>npm test</code> now</p>
+  <p id="tweet">Visit <a id="url" href="https://t.co/x"><span style="font-size:0.001px">https://</span>sazano123.com/trpg/89147.html</a> today</p>
   <p id="notranslate" class="notranslate">Marked as notranslate</p>
   <pre id="block"><code>Print the greeting</code></pre>
   <pre id="poem">Roses are red
@@ -64,7 +65,9 @@ const llmServer = http.createServer((req, res) => {
     const translateSegment = s => {
       if (s.startsWith('He said <b id="g0">')) return '他對<i id="g1">她</i>說<b id="g0">你好</b>。';
       if (s.includes('<a id="g0">')) return '[譯]Click here now';
-      return `[譯]${s}`;
+      // 模擬 Google：把連結裡「看不見的 https://」和後面的網址併在一起
+      const merged = s.replace(/<span id="(g\d+)">https:\/\/<\/span>([\w./-]+)/, '<span id="$1">https://$2</span>');
+      return `[譯]${merged}`;
     };
     if (payload.response_format) {
       const { segments } = JSON.parse(user);
@@ -154,6 +157,10 @@ try {
     // 假伺服器把 [譯] 加在整段最前面（<code> 外面），所以看整個 <pre>
     assert.equal(await page.textContent('#block'), '[譯]Print the greeting');
     assert.equal(await page.textContent('#block code'), 'Print the greeting');
+  });
+  await check('整段翻譯：網址連結原封不動（不會被塞進看不見的元素裡消失）', async () => {
+    assert.equal(await page.textContent('#tweet'), '[譯]Visit https://sazano123.com/trpg/89147.html today');
+    assert.equal(await page.evaluate(() => document.querySelector('#url').lastChild.textContent), 'sazano123.com/trpg/89147.html');
   });
   await check('整頁翻譯：編輯器裡的預設文字照翻', async () => {
     assert.equal(await page.textContent('#editor'), '[譯]Write your story here');
@@ -313,6 +320,24 @@ try {
     assert.equal(llmRequests.length, before + 1);
   });
 
+  // 5-2. 觸發式翻譯：X（Twitter）那種保留換行的段落＋網址連結
+  await page.evaluate(() => {
+    const div = document.createElement('div');
+    div.id = 'tweet2';
+    div.style.whiteSpace = 'pre-wrap';
+    div.innerHTML = 'Line one\n\nLine two <a href="#x"><span style="display:none">https://</span>example.com/path</a>';
+    document.body.appendChild(div);
+  });
+  await page.hover('#tweet2');
+  await page.keyboard.press('ControlRight');
+  await check('觸發式翻譯：保留換行，網址連結不會消失', async () => {
+    await page.waitForSelector('#tweet2 + .immersive-translation-container', { timeout: 3000 });
+    const text = await page.evaluate(() => document.querySelector('#tweet2 + .immersive-translation-container').innerText);
+    assert.match(text, /Line one\n\nLine two/);
+    assert.match(text, /example\.com\/path/);
+    assert.equal(await page.evaluate(() => document.querySelector('#tweet2 + .immersive-translation-container [data-coco-atomic]')), null);
+  });
+
   // 6. 錯誤提示
   llmMode = 'unauthorized';
   await page.hover('#fresh2');
@@ -324,7 +349,7 @@ try {
     assert.match(text, /401/);
   });
   await check('錯誤：失敗時不插入一份跟原文一樣的「譯文」', async () => {
-    assert.equal(await page.locator('.immersive-translation-container').count(), 1);
+    assert.equal(await page.locator('#fresh2 + .immersive-translation-container').count(), 0);
   });
   llmMode = 'ok';
 
@@ -452,7 +477,7 @@ try {
   await check('選取工具列：翻譯、查字典、朗讀三個按鈕', async () => {
     await page.waitForSelector('#coco-selection-toolbar', { state: 'visible', timeout: 3000 });
     const actions = await page.$$eval('#coco-selection-toolbar button', bs => bs.filter(b => b.style.display !== 'none').map(b => b.dataset.action));
-    assert.deepEqual(actions, ['translate', 'lookup', 'speak']);
+    assert.deepEqual(actions, ['translate', 'page', 'lookup', 'speak']);
   });
   // 假的字典資料：Google 雙語詞典＋Free Dictionary 英英解釋
   await context.route('https://translate.googleapis.com/translate_a/single**', route => route.fulfill({

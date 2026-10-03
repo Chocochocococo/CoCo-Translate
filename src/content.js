@@ -427,9 +427,29 @@ const BILINGUAL_MAX_UNIT_CHARS = 8000;
 let translatedUnits = [];   // 整頁翻譯時套用過的段落，還原用
 
 const isPreformatted = element => {
-  if (element.closest('pre')) return true;
+  // data-coco-pre：觸發翻譯時複製出來的段落（離開網頁就讀不到樣式），先在原段落上量好
+  if (element.closest('pre, [data-coco-pre]')) return true;
   if (!element.isConnected) return false;
   return /^pre/.test(getComputedStyle(element).whiteSpace || '');
+};
+
+// 整個內容就是一個網址（https://…、example.com/…）：翻譯服務只會把它弄壞，原封不動保留
+const URL_LIKE = /^(?:(?:[a-z][a-z0-9+.-]*:\/\/|www\.)\S+|(?:[\w-]+\.)+[a-z]{2,}(?:[/?#]\S*)?)…?$/i;
+
+/**
+ * 段落裡要原封不動保留的行內元素（送出時跟圖片一樣變成 <img id="xN">）：
+ * 網址、看不見的元素、只有換行的元素。
+ * X（Twitter）的連結是「看不見的 https://」＋「看得見的網址」，Google 會把整串網址塞進看不見的那個，
+ * 結果網址整個消失，幹
+ */
+const isOpaqueInline = element => {
+  if (element.dataset?.cocoAtomic === '1') return true;
+  const text = element.textContent;
+  if (!text.trim()) return /\n/.test(text);
+  if (URL_LIKE.test(text.replace(/\s+/g, ''))) return true;
+  if (!element.isConnected) return false;
+  const style = getComputedStyle(element);
+  return style.display === 'none' || style.visibility === 'hidden' || parseFloat(style.fontSize) < 2;
 };
 
 function buildUnit(parent, nodes, { maxChars = MAX_UNIT_CHARS } = {}) {
@@ -445,7 +465,7 @@ function buildUnit(parent, nodes, { maxChars = MAX_UNIT_CHARS } = {}) {
       return Markup.escapeText(text);
     }
     if (node.nodeType !== Node.ELEMENT_NODE) return '';
-    const atomic = ATOMIC_TAGS.has(node.localName) || node.matches(SKIP_SELECTOR);
+    const atomic = ATOMIC_TAGS.has(node.localName) || node.matches(SKIP_SELECTOR) || isOpaqueInline(node);
     const id = `${atomic ? 'x' : 'g'}${elements.size}`;
     elements.set(id, { el: node, atomic });
     expectedParents[id] = parentId;
@@ -492,10 +512,15 @@ function collectUnits(root, { fromMutation = false, bilingual = false } = {}) {
     for (const node of run) {
       if (node.nodeType === Node.TEXT_NODE) {
         textNodes.push(node);
-      } else if (!ATOMIC_TAGS.has(node.localName)) {
-        const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT, null);
+      } else if (!ATOMIC_TAGS.has(node.localName) && !isOpaqueInline(node)) {
+        const walker = document.createTreeWalker(node, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT, {
+          // 網址、看不見的元素整個跳過，裡面的字不算「要翻的字」
+          acceptNode: n => (n.nodeType === Node.ELEMENT_NODE && isOpaqueInline(n)
+            ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT)
+        });
         while (walker.nextNode()) {
-          if (!SKIP_TAGS.has(walker.currentNode.parentElement?.tagName)) textNodes.push(walker.currentNode);
+          const current = walker.currentNode;
+          if (current.nodeType === Node.TEXT_NODE && !SKIP_TAGS.has(current.parentElement?.tagName)) textNodes.push(current);
         }
       }
     }
@@ -809,7 +834,7 @@ const handleTranslation = async target => {
   container.parentNode.insertBefore(loadingIndicator, container.nextSibling);
   
   // 開始翻譯前，顯示 loading，真他媽的讓人安心
-  const translationHTML = await translateHTMLStructure(container.innerHTML);
+  const translationHTML = await translateHTMLStructure(container);
   
   // 翻譯結束，移除 loading 圖示
   loadingIndicator.remove();
@@ -825,9 +850,24 @@ const handleTranslation = async target => {
   }
 };
 
-const translateHTMLStructure = async html => {
+// 從網頁上的段落複製一份來翻：複製出來的元素離開網頁就讀不到樣式，
+// 所以「哪些元素看不見」「換行要不要保留」先在原段落上量好，記在複製品上
+const cloneForTranslation = source => {
   const container = document.createElement('div');
-  container.innerHTML = html;
+  container.append(...[...source.childNodes].map(node => node.cloneNode(true)));
+  const liveElements = source.querySelectorAll('*');
+  const clonedElements = container.querySelectorAll('*');
+  if (liveElements.length === clonedElements.length) {
+    liveElements.forEach((el, i) => {
+      if (isOpaqueInline(el)) clonedElements[i].dataset.cocoAtomic = '1';
+    });
+  }
+  if (isPreformatted(source)) container.dataset.cocoPre = '1';
+  return container;
+};
+
+const translateHTMLStructure = async source => {
+  const container = cloneForTranslation(source);
   const role = isPageTranslationMode ? 'page' : 'trigger';
   const { units, fragmentNodes } = collectUnits(container);
   let translatedAny = false;
@@ -859,6 +899,7 @@ const translateHTMLStructure = async html => {
 
   // 全部失敗就別插一份跟原文一模一樣的東西
   if (hadError && !translatedAny) return null;
+  container.querySelectorAll('[data-coco-atomic]').forEach(el => el.removeAttribute('data-coco-atomic'));
   return container.innerHTML;
 };
 
@@ -1109,8 +1150,8 @@ let lastSelection = null;   // 放開滑鼠時記下選取內容（點工具列�
 let wordCard = null;
 
 const TOOLBAR_TEXT = {
-  zh: { translate: '翻譯這一段', lookup: '查字典', speak: '朗讀', save: '加入生字本', saved: '已加入 ✓', close: '關閉', loading: '翻譯中…', context: '例句', dictionaryLoading: '查詢字典中…', bilingual: '詞典', definitions: '英英解釋' },
-  en: { translate: 'Translate paragraph', lookup: 'Look up', speak: 'Read aloud', save: 'Add to vocabulary', saved: 'Added ✓', close: 'Close', loading: 'Translating…', context: 'Context', dictionaryLoading: 'Looking up the dictionary…', bilingual: 'Dictionary', definitions: 'English definitions' }
+  zh: { translate: '翻譯這一段', page: '翻譯整頁', restorePage: '顯示原文', lookup: '查字典', speak: '朗讀', save: '加入生字本', saved: '已加入 ✓', close: '關閉', loading: '翻譯中…', context: '例句', dictionaryLoading: '查詢字典中…', bilingual: '詞典', definitions: '英英解釋' },
+  en: { translate: 'Translate paragraph', page: 'Translate page', restorePage: 'Show original', lookup: 'Look up', speak: 'Read aloud', save: 'Add to vocabulary', saved: 'Added ✓', close: 'Close', loading: 'Translating…', context: 'Context', dictionaryLoading: 'Looking up the dictionary…', bilingual: 'Dictionary', definitions: 'English definitions' }
 };
 const toolbarText = key => (TOOLBAR_TEXT[uiLanguage] || TOOLBAR_TEXT.en)[key];
 
@@ -1225,6 +1266,15 @@ const createTranslationButton = () => {
     hideTranslationButton();
     if (element && !isPageTranslationMode) handleTranslation(element);
   });
+  // 整頁翻譯 ⇄ 顯示原文（使用者許願的：雙擊選字就能順手翻整頁）
+  selectionTranslationButton.pageButton = makeButton('🌐', 'page', () => {
+    hideTranslationButton();
+    const type = isPageTranslationMode ? 'RESTORE_PAGE' : 'TRANSLATE_PAGE';
+    if (type === 'TRANSLATE_PAGE') translatePage();
+    else restorePage();
+    // 讓背景知道這一頁的狀態（彈出視窗的大按鈕、右鍵選單、快捷鍵才會對）
+    chrome.runtime.sendMessage({ type }, () => void chrome.runtime.lastError);
+  });
   makeButton('📖', 'lookup', () => {
     if (lastSelection) showWordCard(lastSelection);
   });
@@ -1243,6 +1293,10 @@ const showTranslationButton = e => {
   // 整頁翻譯時段落已經翻好了，只留查字典和朗讀
   // 字幕側欄已經有譯文了，也不用
   selectionTranslationButton.translateButton.style.display = isPageTranslationMode || info.inTranscript ? 'none' : 'inline-flex';
+  const pageButton = selectionTranslationButton.pageButton;
+  pageButton.style.display = info.inTranscript ? 'none' : 'inline-flex';
+  pageButton.textContent = isPageTranslationMode ? '↩️' : '🌐';
+  pageButton.title = toolbarText(isPageTranslationMode ? 'restorePage' : 'page');
   selectionTranslationButton.style.left = `${cursorPosition.x + 20 + window.scrollX}px`;
   selectionTranslationButton.style.top = `${cursorPosition.y - 40 + window.scrollY}px`;
   selectionTranslationButton.style.display = 'flex';

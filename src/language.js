@@ -5,7 +5,7 @@ const i18nStrings = {
   en: {
     // 共用
     appName: "CoCo Translate",
-    support: "☕ Support CoCo",
+    support: "🍫 Support CoCo",
     save: "Save",
     delete: "Delete",
     add: "Add",
@@ -178,7 +178,7 @@ const i18nStrings = {
   },
   zh: {
     appName: "CoCo Translate",
-    support: "☕ 贊助 CoCo",
+    support: "🍫 贊助 CoCo",
     save: "儲存",
     delete: "刪除",
     add: "新增",

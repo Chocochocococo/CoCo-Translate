@@ -13,7 +13,7 @@
 
 ### 贊助
 
-CoCo 完全免費。覺得好用的話，可以到 [Ko-fi](https://ko-fi.com/chocochocococo) 或 [綠界](https://p.ecpay.com.tw/D6622EF)（台灣使用者）請作者喝杯咖啡。
+CoCo 完全免費。覺得好用的話，可以到 [Ko-fi](https://ko-fi.com/chocochocococo) 或 [綠界](https://p.ecpay.com.tw/D6622EF)（台灣使用者）請作者喝杯熱可可。
 
 ### 關於
 
@@ -36,7 +36,7 @@ The website and user guide are in Traditional Chinese: https://chocochocococo.gi
 - Chrome: download the Chrome zip, unzip it, open `chrome://extensions`, turn on Developer mode, and choose "Load unpacked".
 - Firefox: download the xpi, open `about:addons`, click the gear icon, and choose "Install Add-on From File…".
 
-**Support**: CoCo is free. If you find it useful, you can buy the author a coffee on [Ko-fi](https://ko-fi.com/chocochocococo).
+**Support**: CoCo is free. If you find it useful, you can buy the author a hot cocoa on [Ko-fi](https://ko-fi.com/chocochocococo).
 
 **About**: CoCo was vibe coded by someone who never studied programming. ChatGPT built the foundation (versions 1.0 to 1.4), and Claude (Claude Code) did the 1.5+ rewrite and the website. Bug reports are welcome in [Issues](https://github.com/Chocochocococo/CoCo-Translate/issues).
 

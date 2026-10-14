@@ -62,8 +62,18 @@ body {
   text-align: center;
 }
 
+.side-nav a.support-link {
+  margin-top: auto;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.side-nav a.support-link:hover {
+  color: var(--accent);
+}
+
 .version {
-  margin: auto 12px 0;
+  margin: 4px 12px 0;
   color: var(--muted);
   font-size: 12px;
 }

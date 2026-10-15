@@ -1,5 +1,5 @@
-// reader.js — 文件翻譯：PDF（左邊原本的頁面、右邊原文＋譯文）和 TXT（只有右邊）
-// 翻譯、選字工具列、單字卡都來自 content.js（同一頁先載入的）；段落整理在 docparse.js
+// reader.js — 文件翻譯：PDF（左邊原本的頁面、右邊原文＋譯文），Word、EPUB、TXT、字幕檔（只有右邊）
+// 翻譯、選字工具列、單字卡都來自 content.js（同一頁先載入的）；段落整理在 docparse.js、docformats.js
 import * as pdfjsLib from './vendor/pdfjs/pdf.min.js';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = chrome.runtime.getURL('vendor/pdfjs/pdf.worker.min.js');
@@ -9,7 +9,8 @@ const BATCH_ITEMS = 30;
 const BATCH_CHARS = 5000;
 
 let documentName = '';
-let paragraphs = [];          // { page, text, heading, el, transEl, state: 'idle'|'queued'|'done'|'failed' }
+let paragraphs = [];          // { page, label, text, heading, el, transEl, state: 'idle'|'queued'|'done'|'failed' }
+let subtitles = null;         // 字幕檔：匯出時照原本的時間軸組回去
 let queue = [];
 let translating = false;
 let observer = null;
@@ -102,21 +103,28 @@ const renderParagraphs = (groups, { single }) => {
   }), { root: pane, rootMargin: '100% 0px' });
 
   paragraphs = [];
-  groups.forEach(({ page, items }) => {
+  groups.forEach(({ page, label, items }) => {
     if (!items.length) return;
     const block = document.createElement('section');
     block.className = 'page-block';
-    if (page) {
-      block.dataset.page = page;
-      const label = document.createElement('div');
-      label.className = 'page-label';
-      label.textContent = i18n('readerPage', { n: page });
-      block.appendChild(label);
+    if (page) block.dataset.page = page;
+    const labelText = label || (page ? i18n('readerPage', { n: page }) : '');
+    if (labelText) {
+      const labelEl = document.createElement('div');
+      labelEl.className = 'page-label';
+      labelEl.textContent = labelText;
+      block.appendChild(labelEl);
     }
     items.forEach(item => {
       const el = document.createElement('div');
       el.className = `para coco-reader-text${item.heading ? ' heading' : ''}`;
       el.dataset.index = paragraphs.length;
+      if (item.meta) {
+        const meta = document.createElement('div');
+        meta.className = 'meta';
+        meta.textContent = item.meta;
+        el.appendChild(meta);
+      }
       const orig = document.createElement('div');
       orig.className = 'orig';
       orig.textContent = item.text;
@@ -124,7 +132,7 @@ const renderParagraphs = (groups, { single }) => {
       transEl.className = 'trans';
       el.append(orig, transEl);
       block.appendChild(el);
-      paragraphs.push({ page, text: item.text, heading: item.heading, el, transEl, state: 'idle' });
+      paragraphs.push({ page, label: labelText, text: item.text, heading: item.heading, el, transEl, state: 'idle' });
       observer.observe(el);
     });
     column.appendChild(block);
@@ -211,12 +219,14 @@ const resetView = name => {
   translating = false;
   pagesTotal = 0;
   paragraphs = [];
+  subtitles = null;
   pdfDocument?.destroy?.();
   pdfDocument = null;
   documentName = name;
   $('docName').textContent = name;
   document.title = `${name} – CoCo`;
   $('exportBtn').disabled = true;
+  updateExportButtons();
   $('dropZone').classList.add('hidden');
   $('pdfPane').classList.add('hidden');
   $('textPane').classList.add('hidden');
@@ -281,26 +291,76 @@ const openPdf = async bytes => {
   $('exportBtn').disabled = false;
 };
 
-const openText = bytes => {
-  const text = DocParse.decodeText(bytes);
-  renderParagraphs([{ page: 0, items: DocParse.paragraphsFromText(text) }], { single: true });
+// 只有右邊一欄的文件（Word、EPUB、TXT、字幕）
+const showColumn = groups => {
+  if (!groups.some(group => group.items.length)) {
+    showError(i18n('readerEmpty'));
+    return;
+  }
+  renderParagraphs(groups, { single: true });
   setStatus('');
   $('exportBtn').disabled = false;
+  updateExportButtons();
+};
+
+const openText = bytes => {
+  showColumn([{ page: 0, items: DocParse.paragraphsFromText(DocParse.decodeText(bytes)) }]);
+};
+
+const openDocx = async bytes => {
+  const { items } = await DocFormats.parseDocx(bytes);
+  showColumn([{ page: 0, items }]);
+};
+
+const openEpub = async bytes => {
+  const { chapters } = await DocFormats.parseEpub(bytes);
+  showColumn(chapters.map((chapter, i) => ({ page: 0, label: chapter.title || i18n('readerSection', { n: i + 1 }), items: chapter.items })));
+};
+
+const openSubtitles = bytes => {
+  subtitles = DocFormats.parseSubtitles(DocParse.decodeText(bytes));
+  showColumn([{ page: 0, items: subtitles.cues.map(cue => ({ text: cue.text, meta: DocFormats.cueStart(cue.timing) })) }]);
+};
+
+const looksLikeSubtitles = bytes => {
+  const head = new TextDecoder('utf-8').decode(bytes.subarray(0, 512)).replace(/^\ufeff/, '');
+  return /^WEBVTT/.test(head) || /^\s*\d+\s*\r?\n\s*\d{1,2}:\d{2}:\d{2}[,.]\d{1,3}\s*-->/.test(head);
+};
+
+// zip 包的是 Word 還是 EPUB：先看副檔名，看不出來就看裡面有什麼
+const zipKind = (bytes, name) => {
+  if (/\.epub$/i.test(name)) return 'epub';
+  if (/\.docx$/i.test(name)) return 'docx';
+  try {
+    const zip = DocFormats.readZip(bytes);
+    if (zip.has('word/document.xml')) return 'docx';
+    if (zip.has('META-INF/container.xml')) return 'epub';
+  } catch (e) {
+    // 不是完整的 zip
+  }
+  return '';
 };
 
 const openBytes = async (bytes, name, type = '') => {
   resetView(name);
   try {
+    const kind = DocFormats.isZip(bytes) ? zipKind(bytes, name) : '';
     if (isPdfBytes(bytes) || /\.pdf$/i.test(name) || type === 'application/pdf') {
       await openPdf(bytes);
-    } else if (/\.(txt|text|md|markdown|log)$/i.test(name) || type.startsWith('text/')) {
+    } else if (kind === 'docx') {
+      await openDocx(bytes);
+    } else if (kind === 'epub') {
+      await openEpub(bytes);
+    } else if (/\.(srt|vtt)$/i.test(name) || type === 'text/vtt' || (!kind && looksLikeSubtitles(bytes))) {
+      openSubtitles(bytes);
+    } else if (!kind && (/\.(txt|text|md|markdown|log)$/i.test(name) || type.startsWith('text/'))) {
       openText(bytes);
     } else {
       showError(i18n('readerUnsupported'));
     }
   } catch (error) {
     console.error('CoCo: 打不開文件', error);
-    showError(i18n('readerLoadFailed', { error: error?.message || String(error) }));
+    showError(error?.code === 'drm' ? i18n('readerDrm') : i18n('readerLoadFailed', { error: error?.message || String(error) }));
   }
 };
 
@@ -339,10 +399,21 @@ const openUrl = async url => {
   }
 };
 
-// ---------------- 匯出：剩下的段落翻完，存成「原文、譯文、空行」的文字檔 ----------------
-const exportBilingual = async () => {
-  const button = $('exportBtn');
-  button.disabled = true;
+// ---------------- 匯出：剩下的段落翻完再存檔 ----------------
+const download = (text, filename) => {
+  const url = URL.createObjectURL(new Blob([text], { type: 'text/plain;charset=utf-8' }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+};
+
+const translateEverything = async () => {
+  const buttons = [$('exportBtn'), $('exportAltBtn')];
+  buttons.forEach(button => { button.disabled = true; });
   paragraphs.forEach(enqueue);
   const id = loadId;
   while (paragraphs.some(p => p.state === 'queued') && id === loadId) {
@@ -351,28 +422,41 @@ const exportBilingual = async () => {
     await new Promise(resolve => setTimeout(resolve, 300));
   }
   setStatus('');
-  button.disabled = false;
-  if (id !== loadId) return;
+  buttons.forEach(button => { button.disabled = false; });
+  return id === loadId;
+};
+
+const baseName = () => documentName.replace(/\.[^.]+$/, '') || 'document';
+
+// 原文、譯文、空行；PDF 每頁、EPUB 每章前面加個分隔
+const exportBilingualText = async () => {
+  if (!(await translateEverything())) return;
   const lines = [];
-  let lastPage = null;
+  let lastLabel = null;
   paragraphs.forEach(para => {
-    if (para.page && para.page !== lastPage) {
-      lines.push(`── ${i18n('readerPage', { n: para.page })} ──`, '');
-      lastPage = para.page;
+    if (para.label && para.label !== lastLabel) {
+      lines.push(`── ${para.label} ──`, '');
+      lastLabel = para.label;
     }
     lines.push(para.text);
     if (para.transEl.textContent) lines.push(para.transEl.textContent);
     lines.push('');
   });
-  const base = documentName.replace(/\.[^.]+$/, '') || 'document';
-  const url = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/plain;charset=utf-8' }));
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `${base}.bilingual.txt`;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  download(lines.join('\n'), `${baseName()}.bilingual.txt`);
+};
+
+// 字幕：時間軸照舊，雙語是原文下面多一行譯文
+const exportSubtitles = async mode => {
+  if (!(await translateEverything()) || !subtitles) return;
+  const text = DocFormats.buildSubtitles(subtitles, paragraphs.map(p => p.transEl.textContent), mode);
+  download(text, `${baseName()}.${mode === 'bilingual' ? 'bilingual' : targetLanguage}.${subtitles.format}`);
+};
+
+const updateExportButtons = () => {
+  $('exportBtn').textContent = i18n(subtitles ? 'readerExportSubtitles' : 'readerExport');
+  $('exportAltBtn').textContent = i18n('readerExportTranslated');
+  $('exportAltBtn').classList.toggle('hidden', !subtitles);
+  $('exportAltBtn').disabled = $('exportBtn').disabled;
 };
 
 // ---------------- 啟動 ----------------
@@ -380,6 +464,7 @@ const start = () => {
   getStorageLang().then(lang => {
     applyLanguage(lang || 'zh');
     if (documentName) document.title = `${documentName} – CoCo`;
+    updateExportButtons();
     showStatus();
   });
 
@@ -388,7 +473,8 @@ const start = () => {
     openFile(event.target.files[0]);
     event.target.value = '';
   });
-  $('exportBtn').addEventListener('click', exportBilingual);
+  $('exportBtn').addEventListener('click', () => (subtitles ? exportSubtitles('bilingual') : exportBilingualText()));
+  $('exportAltBtn').addEventListener('click', () => exportSubtitles('translation'));
 
   // 整個視窗都可以拖檔案進來
   let dragDepth = 0;

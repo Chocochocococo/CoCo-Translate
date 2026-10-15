@@ -20,6 +20,8 @@ const { chromium } = (() => {
   }
 })();
 
+import { makeDocx, makeEpub } from '../helpers/zip.mjs';
+
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const EXT_DIR = path.join(ROOT, 'dist', 'chrome');
 
@@ -114,7 +116,35 @@ const PDF = makePdf([1, 2, 3].map(n => [
 ]));
 const TXT = 'Release notes\n\nThe reader now opens plain text files.\nShort lines stay as they are.\n\nSecond paragraph here.';
 
+const DOCX = makeDocx([
+  ['Quarterly Report', 'Title'],
+  ['Overview', '1'],
+  [['Sales grew by ', '12%', ' this quarter.']],
+  [['Line one', '\n', 'Line two']]
+], { headingStyleId: '1', headingStyleName: 'heading 1' });
+const EPUB_CHAPTERS = [
+  ['cover.xhtml', '<div><img src="cover.jpg" alt=""/></div>'],
+  ['ch1.xhtml', '<h1>Chapter One</h1><p>It was a <em>dark</em> and stormy night.</p><p><ruby>漢<rt>かん</rt></ruby>字</p><div><p>Nested</p> tail text</div>'],
+  ['ch2.xhtml', '<p>No heading here.</p>']
+];
+const EPUB = makeEpub(EPUB_CHAPTERS);
+const EPUB_DRM = makeEpub(EPUB_CHAPTERS, { encrypted: true });
+const SRT = '1\n00:00:01,000 --> 00:00:03,000\n<i>Hello there,</i>\nmy friend.\n\n2\n00:01:04,000 --> 00:01:05,000\nGoodbye.\n';
+const FILES = {
+  '/manual.pdf': ['application/pdf', () => PDF],
+  '/notes.txt': ['text/plain; charset=utf-8', () => TXT],
+  '/report.docx': ['application/vnd.openxmlformats-officedocument.wordprocessingml.document', () => DOCX],
+  '/novel.epub': ['application/epub+zip', () => EPUB],
+  '/locked.epub': ['application/epub+zip', () => EPUB_DRM],
+  '/movie.srt': ['application/x-subrip', () => SRT]
+};
+
 const pageServer = http.createServer((req, res) => {
+  const file = FILES[req.url.split('?')[0]];
+  if (file) {
+    res.writeHead(200, { 'Content-Type': file[0] });
+    return res.end(file[1]());
+  }
   if (req.url.startsWith('/manual.pdf')) {
     res.writeHead(200, { 'Content-Type': 'application/pdf' });
     return res.end(PDF);
@@ -1153,6 +1183,56 @@ try {
     assert.ok(await reader.$('#textPane.single'));
     await reader.waitForFunction(() => [...document.querySelectorAll('.para .trans')].every(t => t.textContent.startsWith('[譯]')), null, { timeout: 5000 });
   });
+  // Word
+  await reader.goto(`chrome-extension://${extId}/reader.html?file=${encodeURIComponent(origin + '/report.docx')}`);
+  await reader.waitForSelector('#textPane .para', { timeout: 5000 });
+  await check('文件翻譯：Word 的段落、標題（中文版 Word 的樣式 ID 也認得）、換行', async () => {
+    const paras = await reader.$$eval('.para', els => els.map(e => [e.querySelector('.orig').textContent, e.classList.contains('heading')]));
+    assert.deepEqual(paras, [['Quarterly Report', true], ['Overview', true], ['Sales grew by 12% this quarter.', false], ['Line one\nLine two', false]]);
+    await reader.waitForFunction(() => [...document.querySelectorAll('.para .trans')].every(t => t.textContent.startsWith('[譯]')), null, { timeout: 5000 });
+  });
+
+  // EPUB
+  await reader.goto(`chrome-extension://${extId}/reader.html?file=${encodeURIComponent(origin + '/novel.epub')}`);
+  await reader.waitForSelector('#textPane .para', { timeout: 5000 });
+  await check('文件翻譯：EPUB 照章節排，略過封面，注音假名不會混進正文', async () => {
+    assert.deepEqual(await reader.$$eval('.page-label', els => els.map(e => e.textContent)), ['Chapter One', '第 2 節']);
+    assert.deepEqual(await reader.$$eval('.para .orig', els => els.map(e => e.textContent)),
+      ['Chapter One', 'It was a dark and stormy night.', '漢字', 'Nested', 'tail text', 'No heading here.']);
+  });
+  await check('文件翻譯：EPUB 匯出的雙語文字檔用章節名稱分隔', async () => {
+    const [download] = await Promise.all([reader.waitForEvent('download', { timeout: 10000 }), reader.click('#exportBtn')]);
+    assert.equal(download.suggestedFilename(), 'novel.bilingual.txt');
+    const text = fs.readFileSync(await download.path(), 'utf8');
+    assert.ok(text.startsWith('── Chapter One ──\n\nChapter One\n[譯]Chapter One\n'), text.slice(0, 80));
+    assert.ok(text.includes('── 第 2 節 ──\n\nNo heading here.\n[譯]No heading here.'));
+  });
+  await reader.goto(`chrome-extension://${extId}/reader.html?file=${encodeURIComponent(origin + '/locked.epub')}`);
+  await check('文件翻譯：有 DRM 的 EPUB 說明讀不到', async () => {
+    await reader.waitForSelector('#dropError:not(.hidden)', { timeout: 5000 });
+    assert.match(await reader.textContent('#dropError'), /DRM/);
+  });
+
+  // 字幕檔
+  await reader.goto(`chrome-extension://${extId}/reader.html?file=${encodeURIComponent(origin + '/movie.srt')}`);
+  await reader.waitForSelector('#textPane .para', { timeout: 5000 });
+  await check('文件翻譯：字幕檔每句一段，前面標時間', async () => {
+    const paras = await reader.$$eval('.para', els => els.map(e => [e.querySelector('.meta').textContent, e.querySelector('.orig').textContent]));
+    assert.deepEqual(paras, [['0:01', 'Hello there, my friend.'], ['1:04', 'Goodbye.']]);
+    assert.equal(await reader.textContent('#exportBtn'), '匯出雙語字幕');
+    assert.ok(await reader.isVisible('#exportAltBtn'));
+  });
+  await check('文件翻譯：匯出雙語字幕、譯文字幕（時間軸不變，原本的標記保留）', async () => {
+    const [bilingual] = await Promise.all([reader.waitForEvent('download', { timeout: 10000 }), reader.click('#exportBtn')]);
+    assert.equal(bilingual.suggestedFilename(), 'movie.bilingual.srt');
+    assert.equal(fs.readFileSync(await bilingual.path(), 'utf8'),
+      '1\n00:00:01,000 --> 00:00:03,000\n<i>Hello there,</i>\nmy friend.\n[譯]Hello there, my friend.\n\n2\n00:01:04,000 --> 00:01:05,000\nGoodbye.\n[譯]Goodbye.\n');
+    const [translated] = await Promise.all([reader.waitForEvent('download', { timeout: 10000 }), reader.click('#exportAltBtn')]);
+    assert.match(translated.suggestedFilename(), /^movie\.[\w-]+\.srt$/);
+    assert.equal(fs.readFileSync(await translated.path(), 'utf8'),
+      '1\n00:00:01,000 --> 00:00:03,000\n[譯]Hello there, my friend.\n\n2\n00:01:04,000 --> 00:01:05,000\n[譯]Goodbye.\n');
+  });
+
   await check('文件翻譯：不支援的檔案顯示說明', async () => {
     await reader.setInputFiles('#fileInput', { name: 'photo.png', mimeType: 'image/png', buffer: Buffer.from([0x89, 0x50, 0x4e, 0x47]) });
     await reader.waitForSelector('#dropError:not(.hidden)', { timeout: 3000 });
@@ -1163,6 +1243,8 @@ try {
     await reader.waitForSelector('.page-block[data-page="3"]', { timeout: 10000 });
     assert.equal(await reader.textContent('#docName'), 'local.pdf');
     assert.ok(await reader.$('#dropZone.hidden'));
+    assert.equal(await reader.textContent('#exportBtn'), '匯出雙語文字檔');
+    assert.ok(!(await reader.isVisible('#exportAltBtn')));
   });
 
   await check('文件翻譯：沒有本機檔案權限時，提示改用拖曳或開啟檔案', async () => {

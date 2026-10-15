@@ -18,15 +18,16 @@
       <div id="status" class="status" aria-live="polite"></div>
     </div>
     <button id="openFileBtn" class="btn secondary small" type="button" data-i18n="readerOpen">開啟檔案</button>
-    <button id="exportBtn" class="btn small" type="button" data-i18n="readerExport" disabled>匯出雙語文字檔</button>
-    <input type="file" id="fileInput" accept=".pdf,.txt,.text,.md,application/pdf,text/plain" hidden>
+    <button id="exportAltBtn" class="btn secondary small hidden" type="button" disabled>匯出譯文字幕</button>
+    <button id="exportBtn" class="btn small" type="button" disabled>匯出雙語文字檔</button>
+    <input type="file" id="fileInput" accept=".pdf,.docx,.epub,.txt,.text,.md,.srt,.vtt,application/pdf,application/epub+zip,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/vtt" hidden>
   </header>
 
   <main id="readerMain" class="reader-main">
     <section id="dropZone" class="drop-zone">
       <div class="drop-card">
         <div class="drop-icon" aria-hidden="true">📄</div>
-        <h1 data-i18n="readerDropTitle">把 PDF 或 TXT 拖到這裡</h1>
+        <h1 data-i18n="readerDropTitle">把文件拖到這裡</h1>
         <p data-i18n="readerDropHint"></p>
         <p class="privacy" data-i18n="readerPrivacy"></p>
         <p id="dropError" class="warning hidden"></p>
@@ -42,6 +43,7 @@
   <script src="sitePatterns.js"></script>
   <script src="content.js"></script>
   <script src="docparse.js"></script>
+  <script src="docformats.js"></script>
   <script type="module" src="reader.js"></script>
 </body>
 </html>

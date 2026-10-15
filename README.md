@@ -8,7 +8,7 @@
 
 **官網與使用說明：https://chocochocococo.github.io/CoCo-Translate/**
 
-整頁雙語對照、滑鼠觸發翻譯、單字卡與生字本、YouTube 整句雙語字幕、PDF 與 TXT 文件翻譯；
+整頁雙語對照、滑鼠觸發翻譯、單字卡與生字本、YouTube 整句雙語字幕、文件翻譯（PDF、Word、EPUB、TXT、字幕檔）；
 翻譯來源支援 Google、Bing、Google Cloud、DeepL，以及 Ollama、OpenRouter、Gemini 等 AI 翻譯。
 
 ### 贊助
@@ -27,7 +27,7 @@ CoCo Translate is a browser extension for Chrome and Firefox that shows translat
 - **Hover translation**: hold a key (Right Ctrl by default) and point at a paragraph.
 - **Word lookup**: select a word to see its meanings by part of speech, English definitions and examples, then save it to your vocabulary list and export it to Anki.
 - **YouTube bilingual subtitles**: whole sentences instead of word-by-word captions, plus a transcript side panel.
-- **PDF and TXT documents**: open a text-based PDF or a TXT file to read the original pages side by side with paragraph-by-paragraph translations, and export a bilingual text file. Scanned PDFs (images only) aren't supported.
+- **Documents**: open PDF, Word (.docx), EPUB, TXT or subtitle files (.srt, .vtt) and read them paragraph by paragraph with translations; PDFs show the original pages side by side. Export a bilingual text file, or bilingual / translated subtitles with the original timing. Scanned PDFs, .doc files and DRM-protected e-books aren't supported.
 - **Translation sources**: Google and Bing (no key needed), Google Cloud, DeepL, and AI translation through Ollama, OpenRouter, Gemini, Groq or any OpenAI-compatible API.
 - **Interface**: available in English and Traditional Chinese, with light and dark modes.
 

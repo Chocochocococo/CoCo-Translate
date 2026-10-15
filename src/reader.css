@@ -172,6 +172,13 @@ body.dragging .drop-card {
   border-bottom: none;
 }
 
+/* 字幕的時間 */
+.para .meta {
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
 .para .orig {
   white-space: pre-line;
   line-height: 1.6;

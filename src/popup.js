@@ -67,7 +67,7 @@ function initActiveTab() {
     // chrome:// 、about: 這類頁面跑不了 content script
     pageSupported = !!url && /^https?:$/.test(url.protocol);
     // 瀏覽器內建的 PDF 閱讀器裡跑不了 content script，改用 CoCo 的文件翻譯頁
-    documentUrl = url && /^(https?|file):$/.test(url.protocol) && /\.(pdf|txt)$/i.test(url.pathname) ? url.href : '';
+    documentUrl = url && /^(https?|file):$/.test(url.protocol) && /\.(pdf|docx|epub|txt|srt|vtt)$/i.test(url.pathname) ? url.href : '';
     $('siteHost').textContent = pageSupported ? url.hostname : '';
     $('alwaysTranslateHost').textContent = pageSupported ? url.hostname : '';
     renderPageButton();

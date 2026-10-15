@@ -26,16 +26,15 @@ const storageGet = keys => new Promise(resolve => chrome.storage.local.get(keys,
 const storageSet = items => new Promise(resolve => chrome.storage.local.set(items, () => resolve()));
 const queryTabs = query => new Promise(resolve => chrome.tabs.query(query, tabs => resolve(tabs || [])));
 
-// PDF、TXT 的網址（文件翻譯）
-const DOCUMENT_URL_PATTERNS = [
-  '*://*/*.pdf', '*://*/*.pdf?*', '*://*/*.PDF', '*://*/*.txt', '*://*/*.txt?*', 'file:///*.pdf', 'file:///*.txt'
-];
+// 文件翻譯支援的檔案網址：PDF、Word、EPUB、TXT、字幕檔
+const DOCUMENT_URL_PATTERNS = ['pdf', 'PDF', 'docx', 'epub', 'txt', 'srt', 'vtt']
+  .flatMap(ext => [`*://*/*.${ext}`, `*://*/*.${ext}?*`, `file:///*.${ext}`]);
 
 const MENU_ITEMS = [
   { id: "translate-selection", title: "Selection Translate", contexts: ["selection"] },
   { id: "clear-all-translations", title: "Clear Translations", contexts: ["all"] },
   { id: "translate-page", title: "Page Translate", contexts: ["all"] },
-  { id: "translate-document-link", title: "Translate PDF / TXT", contexts: ["link"], targetUrlPatterns: DOCUMENT_URL_PATTERNS },
+  { id: "translate-document-link", title: "Translate This Document", contexts: ["link"], targetUrlPatterns: DOCUMENT_URL_PATTERNS },
   { id: "translate-document-page", title: "Translate This Document", contexts: ["page", "frame"], documentUrlPatterns: DOCUMENT_URL_PATTERNS }
 ];
 

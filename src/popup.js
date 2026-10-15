@@ -3,6 +3,7 @@
 
 let activeTab = null;
 let pageSupported = false;
+let documentUrl = '';   // 目前分頁是 PDF／TXT：大按鈕改成用文件翻譯頁打開
 let pageTranslated = false;
 let pageShortcut = '';
 let triggerKey = 'ControlRight';
@@ -12,6 +13,13 @@ const $ = id => document.getElementById(id);
 // ---------------- 會跟著語言變的文字 ----------------
 function renderPageButton() {
   const button = $('pageToggleBtn');
+  if (documentUrl) {
+    button.disabled = false;
+    button.classList.remove('translated');
+    $('pageToggleLabel').textContent = i18n('openDocument');
+    $('pageShortcut').textContent = '';
+    return;
+  }
   button.disabled = !pageSupported;
   button.classList.toggle('translated', pageSupported && pageTranslated);
   $('pageToggleLabel').textContent = !pageSupported
@@ -58,6 +66,8 @@ function initActiveTab() {
     }
     // chrome:// 、about: 這類頁面跑不了 content script
     pageSupported = !!url && /^https?:$/.test(url.protocol);
+    // 瀏覽器內建的 PDF 閱讀器裡跑不了 content script，改用 CoCo 的文件翻譯頁
+    documentUrl = url && /^(https?|file):$/.test(url.protocol) && /\.(pdf|txt)$/i.test(url.pathname) ? url.href : '';
     $('siteHost').textContent = pageSupported ? url.hostname : '';
     $('alwaysTranslateHost').textContent = pageSupported ? url.hostname : '';
     renderPageButton();
@@ -78,6 +88,10 @@ function sendPageCommand(type) {
 
 function initPageButton() {
   $('pageToggleBtn').addEventListener('click', () => {
+    if (documentUrl) {
+      openDocumentReader(documentUrl);
+      return;
+    }
     if (!pageSupported || !activeTab) return;
     sendPageCommand(pageTranslated ? 'RESTORE_PAGE' : 'TRANSLATE_PAGE');
     pageTranslated = !pageTranslated;
@@ -179,11 +193,18 @@ function initSettings() {
   bindSwitch('youTubeTranscriptPanel', 'youTubeTranscriptPanel', { defaultValue: true });
 }
 
+function openDocumentReader(url = '') {
+  const path = url ? `reader.html?file=${encodeURIComponent(url)}` : 'reader.html';
+  chrome.tabs.create({ url: chrome.runtime.getURL(path), ...(activeTab ? { index: activeTab.index + 1 } : {}) });
+  window.close();
+}
+
 function initLinks() {
   $('openOptionsBtn').addEventListener('click', () => openOptionsPage());
   $('openGlossaryBtn').addEventListener('click', () => openOptionsPage('glossary'));
   $('openVocabularyBtn').addEventListener('click', () => openOptionsPage('vocabulary'));
   $('manageSitesBtn').addEventListener('click', () => openOptionsPage('sites'));
+  $('openReaderBtn').addEventListener('click', () => openDocumentReader());
   $('clearBtn').addEventListener('click', () => {
     chrome.tabs.query({}, tabs => tabs.forEach(tab =>
       chrome.tabs.sendMessage(tab.id, { type: 'CLEAR_ALL_TRANSLATIONS' }, () => void chrome.runtime.lastError)));

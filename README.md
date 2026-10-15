@@ -8,7 +8,7 @@
 
 **官網與使用說明：https://chocochocococo.github.io/CoCo-Translate/**
 
-整頁雙語對照、滑鼠觸發翻譯、單字卡與生字本、YouTube 整句雙語字幕；
+整頁雙語對照、滑鼠觸發翻譯、單字卡與生字本、YouTube 整句雙語字幕、PDF 與 TXT 文件翻譯；
 翻譯來源支援 Google、Bing、Google Cloud、DeepL，以及 Ollama、OpenRouter、Gemini 等 AI 翻譯。
 
 ### 贊助
@@ -27,6 +27,7 @@ CoCo Translate is a browser extension for Chrome and Firefox that shows translat
 - **Hover translation**: hold a key (Right Ctrl by default) and point at a paragraph.
 - **Word lookup**: select a word to see its meanings by part of speech, English definitions and examples, then save it to your vocabulary list and export it to Anki.
 - **YouTube bilingual subtitles**: whole sentences instead of word-by-word captions, plus a transcript side panel.
+- **PDF and TXT documents**: open a text-based PDF or a TXT file to read the original pages side by side with paragraph-by-paragraph translations, and export a bilingual text file. Scanned PDFs (images only) aren't supported.
 - **Translation sources**: Google and Bing (no key needed), Google Cloud, DeepL, and AI translation through Ollama, OpenRouter, Gemini, Groq or any OpenAI-compatible API.
 - **Interface**: available in English and Traditional Chinese, with light and dark modes.
 
@@ -50,3 +51,4 @@ npm run bump        # 升版本號（-- patch / minor / major / 1.8.0.0）
 
 - 程式碼在 `src/`，兩個瀏覽器的 manifest 在 `manifests/`
 - 官網在 `docs/`（GitHub Pages）
+- `src/vendor/pdfjs/` 是 Mozilla 的 [pdf.js](https://github.com/mozilla/pdf.js)（Apache License 2.0），只有文件翻譯頁會載入

@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CoCo 文件翻譯</title>
+  <!-- theme.js 要最先跑，打開時才不會先閃一下白色 -->
+  <script src="theme.js"></script>
+  <link rel="stylesheet" href="theme.css">
+  <link rel="stylesheet" href="reader.css">
+</head>
+<!-- coco-reader：整頁翻譯、滑鼠觸發翻譯都跳過整頁（譯文是我們自己排的），但選字還是可以查單字 -->
+<body class="coco-reader">
+  <header class="reader-bar">
+    <img src="icons/icon-48.png" alt="" class="logo">
+    <div class="title-block">
+      <div id="docName" class="doc-name" data-i18n="readerTitle">文件翻譯</div>
+      <div id="status" class="status" aria-live="polite"></div>
+    </div>
+    <button id="openFileBtn" class="btn secondary small" type="button" data-i18n="readerOpen">開啟檔案</button>
+    <button id="exportBtn" class="btn small" type="button" data-i18n="readerExport" disabled>匯出雙語文字檔</button>
+    <input type="file" id="fileInput" accept=".pdf,.txt,.text,.md,application/pdf,text/plain" hidden>
+  </header>
+
+  <main id="readerMain" class="reader-main">
+    <section id="dropZone" class="drop-zone">
+      <div class="drop-card">
+        <div class="drop-icon" aria-hidden="true">📄</div>
+        <h1 data-i18n="readerDropTitle">把 PDF 或 TXT 拖到這裡</h1>
+        <p data-i18n="readerDropHint"></p>
+        <p class="privacy" data-i18n="readerPrivacy"></p>
+        <p id="dropError" class="warning hidden"></p>
+      </div>
+    </section>
+    <section id="pdfPane" class="pane pdf-pane hidden" aria-label="PDF"></section>
+    <section id="textPane" class="pane text-pane hidden"></section>
+  </main>
+
+  <!-- content.js 帶來選字工具列、單字卡、生字本、朗讀，還有翻譯請求 -->
+  <script src="language.js"></script>
+  <script src="markup.js"></script>
+  <script src="sitePatterns.js"></script>
+  <script src="content.js"></script>
+  <script src="docparse.js"></script>
+  <script type="module" src="reader.js"></script>
+</body>
+</html>

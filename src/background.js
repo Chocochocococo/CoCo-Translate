@@ -26,11 +26,26 @@ const storageGet = keys => new Promise(resolve => chrome.storage.local.get(keys,
 const storageSet = items => new Promise(resolve => chrome.storage.local.set(items, () => resolve()));
 const queryTabs = query => new Promise(resolve => chrome.tabs.query(query, tabs => resolve(tabs || [])));
 
+// PDF、TXT 的網址（文件翻譯）
+const DOCUMENT_URL_PATTERNS = [
+  '*://*/*.pdf', '*://*/*.pdf?*', '*://*/*.PDF', '*://*/*.txt', '*://*/*.txt?*', 'file:///*.pdf', 'file:///*.txt'
+];
+
 const MENU_ITEMS = [
   { id: "translate-selection", title: "Selection Translate", contexts: ["selection"] },
   { id: "clear-all-translations", title: "Clear Translations", contexts: ["all"] },
-  { id: "translate-page", title: "Page Translate", contexts: ["all"] }
+  { id: "translate-page", title: "Page Translate", contexts: ["all"] },
+  { id: "translate-document-link", title: "Translate PDF / TXT", contexts: ["link"], targetUrlPatterns: DOCUMENT_URL_PATTERNS },
+  { id: "translate-document-page", title: "Translate This Document", contexts: ["page", "frame"], documentUrlPatterns: DOCUMENT_URL_PATTERNS }
 ];
+
+// 用文件翻譯頁打開（放在目前分頁的右邊）
+const openDocumentReader = (url, tab) => {
+  chrome.tabs.create({
+    url: chrome.runtime.getURL(`reader.html?file=${encodeURIComponent(url)}`),
+    ...(tab && tab.index != null ? { index: tab.index + 1 } : {})
+  });
+};
 
 // 先清空再建立，避免 onInstalled / onStartup 重複建立時噴 duplicate id
 function createContextMenus() {
@@ -214,6 +229,10 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
     broadcastToTabs({ type: "CLEAR_ALL_TRANSLATIONS" });
   } else if (info.menuItemId === "translate-page") {
     togglePageTranslation(tab);
+  } else if (info.menuItemId === "translate-document-link" && info.linkUrl) {
+    openDocumentReader(info.linkUrl, tab);
+  } else if (info.menuItemId === "translate-document-page") {
+    openDocumentReader(info.frameUrl || info.pageUrl || tab?.url, tab);
   }
 });
 

@@ -346,6 +346,23 @@
 
       <div class="feature flip">
         <div class="text">
+          <h3>PDF、TXT 文件翻譯</h3>
+          <p>說明書、工作指南直接丟進來：左邊是原本的 PDF 頁面，右邊每段原文下面接著譯文，捲到哪裡就翻到哪裡。</p>
+          <ul>
+            <li>被換行切斷的句子自動接回來，每頁重複的頁首、頁尾、頁碼會拿掉</li>
+            <li>網路上的 PDF 從彈出視窗或右鍵選單打開，電腦裡的檔案直接拖進來</li>
+            <li>匯出原文＋譯文的雙語文字檔，選字一樣能查單字卡</li>
+            <li>支援文字版 PDF；整頁是圖片的掃描檔目前無法翻譯</li>
+          </ul>
+        </div>
+        <figure>
+          <img class="shot-light" src="img/reader-light.png" alt="文件翻譯：左邊是熱可可機說明書的 PDF 頁面，右邊每段英文下方接著繁體中文譯文" width="1200" height="700" loading="lazy">
+          <img class="shot-dark" src="img/reader-dark.png" alt="文件翻譯（深色）" width="1200" height="700" loading="lazy">
+        </figure>
+      </div>
+
+      <div class="feature">
+        <div class="text">
           <h3>想用哪個翻譯，就用哪個</h3>
           <p>滑鼠觸發和整頁翻譯可以分開選來源。整頁用免費的 Google，查句子用 AI，額度花在刀口上。</p>
           <ul>
@@ -405,7 +422,7 @@
           <h3>彈出視窗</h3>
           <dl>
             <dt>翻譯此頁／顯示原文</dt>
-            <dd>翻譯整個網頁，或還原成原文。按鈕上會顯示快捷鍵。</dd>
+            <dd>翻譯整個網頁，或還原成原文。按鈕上會顯示快捷鍵。目前分頁是 PDF 或 TXT 時，會變成「翻譯這份文件」。</dd>
             <dt>取代原文／雙語對照</dt>
             <dd>整頁翻譯的顯示方式，翻譯中切換也會馬上重新排版。</dd>
             <dt>翻譯來源、翻譯成</dt>
@@ -417,7 +434,7 @@
             <dt>YouTube 字幕</dt>
             <dd>總開關，底下分開選影片上的字幕和字幕側欄。</dd>
             <dt>右上角按鈕</dt>
-            <dd>切換外觀（自動、淺色、深色），齒輪開啟設定頁。</dd>
+            <dd>切換外觀（自動、淺色、深色）、開啟文件翻譯（PDF、TXT），齒輪開啟設定頁。</dd>
           </dl>
         </div>
         <div class="panel">
@@ -515,6 +532,14 @@
         <summary>為什麼不能只翻譯選取的那幾個字？</summary>
         <p>因為 CoCo 一次翻一整段，上下文才對得上。只想查一個字的話，選取後按工具列的 📖 開單字卡。</p>
       </details>
+      <details>
+        <summary>PDF 打開了，右邊卻說沒有文字？</summary>
+        <p>那份 PDF 是掃描檔，每一頁其實是一張圖片，裡面沒有可以複製的文字。CoCo 目前只支援文字版 PDF（能用滑鼠選取文字的那種）。</p>
+      </details>
+      <details>
+        <summary>電腦裡的 PDF 用瀏覽器打開後，按「翻譯這份文件」卻打不開？</summary>
+        <p>瀏覽器預設不讓擴充功能讀取電腦裡的檔案。把檔案直接拖進文件翻譯頁，或按「開啟檔案」選取就可以了。Chrome 也可以到擴充功能的詳細資料打開「允許存取檔案網址」。</p>
+      </details>
     </div>
   </section>
 
@@ -533,10 +558,11 @@
         <div class="panel">
           <h3>Claude</h3>
           <p class="note">大改版升級</p>
-          <p>1.5 以後的改版由 Claude Code 協作：重寫翻譯核心、加入更多 AI 翻譯來源、整段翻譯、新介面與深色模式、單字卡字典、YouTube 整句雙語字幕，還有這個官網。</p>
+          <p>1.5 以後的改版由 Claude Code 協作：重寫翻譯核心、加入更多 AI 翻譯來源、整段翻譯、新介面與深色模式、單字卡字典、YouTube 整句雙語字幕、PDF 文件翻譯，還有這個官網。</p>
         </div>
       </div>
       <p class="thanks">所以它不會是完美無缺的擴充，一定還藏著沒發現的 Bug。遇到問題歡迎到 <a href="https://github.com/Chocochocococo/CoCo-Translate/issues">GitHub</a> 回報。</p>
+      <p class="thanks">文件翻譯的 PDF 顯示與文字擷取使用 Mozilla 的 <a href="https://github.com/mozilla/pdf.js">pdf.js</a>（Apache License 2.0）。</p>
       <div id="support" class="support">
         <h3>贊助 CoCo</h3>
         <p>CoCo 完全免費，以後也是。覺得好用的話，可以請作者喝杯熱可可，讓下一次改版更有動力。</p>

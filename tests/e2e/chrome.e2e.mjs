@@ -80,7 +80,49 @@ const llmServer = http.createServer((req, res) => {
   });
 }).listen(0);
 
+// ---------- 文件翻譯用的小 PDF（每頁：頁首、標題、會換行的段落、項目符號、頁碼） ----------
+const makePdf = pages => {
+  const escape = text => text.replace(/[\\()]/g, '\\$&');
+  const objects = ['<< /Type /Catalog /Pages 2 0 R >>', null, '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>'];
+  const kids = [];
+  pages.forEach(lines => {
+    const stream = lines.map(([x, y, size, text]) => `BT /F1 ${size} Tf ${x} ${y} Td (${escape(text)}) Tj ET`).join('\n');
+    objects.push(`<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`);
+    objects.push(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents ${objects.length} 0 R >>`);
+    kids.push(`${objects.length} 0 R`);
+  });
+  objects[1] = `<< /Type /Pages /Kids [${kids.join(' ')}] /Count ${kids.length} >>`;
+  let out = '%PDF-1.4\n';
+  const offsets = objects.map((body, i) => {
+    const offset = out.length;
+    out += `${i + 1} 0 obj\n${body}\nendobj\n`;
+    return offset;
+  });
+  const xref = out.length;
+  out += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n${offsets.map(o => `${String(o).padStart(10, '0')} 00000 n \n`).join('')}`;
+  out += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`;
+  return Buffer.from(out, 'latin1');
+};
+const PDF = makePdf([1, 2, 3].map(n => [
+  [72, 750, 9, 'ACME Safety Manual'],
+  [72, 700, 18, `Chapter ${n}`],
+  [72, 670, 11, `Before using the machine, read every instruction in chapter ${n} care-`],
+  [72, 656, 11, 'fully and keep this manual near the device for future reference.'],
+  [72, 620, 11, '- Wear safety glasses.'],
+  [72, 604, 11, `- Unplug part ${n} before cleaning.`],
+  [300, 40, 9, String(n)]
+]));
+const TXT = 'Release notes\n\nThe reader now opens plain text files.\nShort lines stay as they are.\n\nSecond paragraph here.';
+
 const pageServer = http.createServer((req, res) => {
+  if (req.url.startsWith('/manual.pdf')) {
+    res.writeHead(200, { 'Content-Type': 'application/pdf' });
+    return res.end(PDF);
+  }
+  if (req.url.startsWith('/notes.txt')) {
+    res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
+    return res.end(TXT);
+  }
   res.writeHead(200, { 'Content-Type': 'text/html' });
   res.end(PAGE);
 }).listen(0);
@@ -1041,6 +1083,109 @@ try {
     assert.equal(isEnabled, false);
   });
   await popup.click('#toggleTranslation');
+
+  // 11. 文件翻譯：PDF
+  const reader = await context.newPage();
+  reader.on('pageerror', err => errors.push('reader pageerror: ' + err.message));
+  await reader.goto(`chrome-extension://${extId}/reader.html?file=${encodeURIComponent(origin + '/manual.pdf')}`);
+  await reader.waitForSelector('#textPane .para', { timeout: 10000 });
+  await check('文件翻譯：PDF 拆成段落，換行接回去、連字號拿掉', async () => {
+    const texts = await reader.$$eval('.page-block[data-page="1"] .para .orig', els => els.map(e => e.textContent));
+    assert.deepEqual(texts, [
+      'Chapter 1',
+      'Before using the machine, read every instruction in chapter 1 carefully and keep this manual near the device for future reference.',
+      '- Wear safety glasses.',
+      '- Unplug part 1 before cleaning.'
+    ]);
+    assert.ok(await reader.$('.page-block[data-page="1"] .para.heading'), '標題要有 heading');
+  });
+  await check('文件翻譯：每頁重複的頁首和頁碼不會出現', async () => {
+    const all = await reader.textContent('#textPane');
+    assert.ok(!all.includes('ACME Safety Manual'));
+    assert.equal(await reader.$$eval('.page-block', els => els.length), 3);
+  });
+  await check('文件翻譯：左邊畫出 PDF 頁面', async () => {
+    await reader.waitForSelector('.pdf-page[data-page="1"] canvas', { timeout: 10000 });
+    assert.equal(await reader.$$eval('.pdf-page', els => els.length), 3);
+  });
+  await check('文件翻譯：看得到的段落翻成譯文，狀態列有進度', async () => {
+    await reader.waitForFunction(() => document.querySelector('.page-block[data-page="1"] .para .trans')?.textContent.startsWith('[譯]'), null, { timeout: 8000 });
+    assert.equal(await reader.textContent('.page-block[data-page="1"] .para .trans'), '[譯]Chapter 1');
+    assert.match(await reader.textContent('#status'), /^3 頁 · 已翻譯 \d+／12 段$/);
+  });
+  await check('文件翻譯：匯出雙語文字檔（剩下的也會翻完）', async () => {
+    const [download] = await Promise.all([reader.waitForEvent('download', { timeout: 10000 }), reader.click('#exportBtn')]);
+    assert.equal(download.suggestedFilename(), 'manual.bilingual.txt');
+    const text = fs.readFileSync(await download.path(), 'utf8');
+    assert.ok(text.startsWith('── 第 1 頁 ──\n\nChapter 1\n[譯]Chapter 1\n'), text.slice(0, 80));
+    assert.ok(text.includes('── 第 3 頁 ──'));
+    assert.equal((text.match(/\[譯\]/g) || []).length, 12);
+  });
+  await check('文件翻譯：選字還是會出現查單字工具列（沒有翻譯、整頁按鈕）', async () => {
+    await reader.evaluate(() => {
+      const el = document.querySelector('.page-block[data-page="2"] .para .orig');
+      el.scrollIntoView();
+      const range = document.createRange();
+      range.setStart(el.firstChild, 0);
+      range.setEnd(el.firstChild, 7);
+      getSelection().removeAllRanges();
+      getSelection().addRange(range);
+    });
+    const box = await reader.evaluate(() => {
+      const r = getSelection().getRangeAt(0).getBoundingClientRect();
+      return { x: r.left + 5, y: r.top + r.height / 2 };
+    });
+    await reader.mouse.move(box.x, box.y);
+    await reader.mouse.up();
+    await reader.waitForSelector('#coco-selection-toolbar', { state: 'visible', timeout: 3000 });
+    const visible = await reader.$$eval('#coco-selection-toolbar button', bs => bs.filter(b => b.offsetParent).map(b => b.dataset.action || b.textContent));
+    assert.ok(visible.length > 0);
+    assert.ok(!(await reader.$$eval('#coco-selection-toolbar button', bs => bs.some(b => b.offsetParent && /🌐/.test(b.textContent)))), '文件翻譯頁不需要整頁翻譯按鈕');
+  });
+
+  // 文件翻譯：TXT
+  await reader.goto(`chrome-extension://${extId}/reader.html?file=${encodeURIComponent(origin + '/notes.txt')}`);
+  await reader.waitForSelector('#textPane .para', { timeout: 5000 });
+  await check('文件翻譯：TXT 用空行分段，短行保留換行，只有右邊一欄', async () => {
+    const texts = await reader.$$eval('.para .orig', els => els.map(e => e.textContent));
+    assert.deepEqual(texts, ['Release notes', 'The reader now opens plain text files.\nShort lines stay as they are.', 'Second paragraph here.']);
+    assert.ok(await reader.$('#pdfPane.hidden'));
+    assert.ok(await reader.$('#textPane.single'));
+    await reader.waitForFunction(() => [...document.querySelectorAll('.para .trans')].every(t => t.textContent.startsWith('[譯]')), null, { timeout: 5000 });
+  });
+  await check('文件翻譯：不支援的檔案顯示說明', async () => {
+    await reader.setInputFiles('#fileInput', { name: 'photo.png', mimeType: 'image/png', buffer: Buffer.from([0x89, 0x50, 0x4e, 0x47]) });
+    await reader.waitForSelector('#dropError:not(.hidden)', { timeout: 3000 });
+    assert.ok(!(await reader.$('#dropZone.hidden')));
+  });
+  await check('文件翻譯：從檔案選擇器打開 PDF', async () => {
+    await reader.setInputFiles('#fileInput', { name: 'local.pdf', mimeType: 'application/pdf', buffer: PDF });
+    await reader.waitForSelector('.page-block[data-page="3"]', { timeout: 10000 });
+    assert.equal(await reader.textContent('#docName'), 'local.pdf');
+    assert.ok(await reader.$('#dropZone.hidden'));
+  });
+
+  await check('文件翻譯：沒有本機檔案權限時，提示改用拖曳或開啟檔案', async () => {
+    await reader.goto(`chrome-extension://${extId}/reader.html?file=${encodeURIComponent('file:///tmp/coco-missing.pdf')}`);
+    await reader.waitForSelector('#dropError:not(.hidden)', { timeout: 5000 });
+    assert.match(await reader.textContent('#dropError'), /拖進來/);
+  });
+
+  // popup：目前分頁是 PDF 時，大按鈕改成「翻譯這份文件」
+  const pdfPopup = await context.newPage();
+  pdfPopup.on('pageerror', err => errors.push('pdf popup pageerror: ' + err.message));
+  await pdfPopup.addInitScript(([id, url]) => {
+    chrome.tabs.query = (q, cb) => cb([{ id, url, index: 0 }]);
+  }, [tabId, origin + '/manual.pdf']);
+  await pdfPopup.goto(`chrome-extension://${extId}/popup.html`);
+  await pdfPopup.waitForTimeout(400);
+  await check('popup：PDF 分頁的大按鈕用文件翻譯打開', async () => {
+    assert.equal(await pdfPopup.textContent('#pageToggleLabel'), '翻譯這份文件');
+    const [opened] = await Promise.all([context.waitForEvent('page', { timeout: 5000 }), pdfPopup.click('#pageToggleBtn')]);
+    await opened.waitForLoadState();
+    assert.equal(opened.url(), `chrome-extension://${extId}/reader.html?file=${encodeURIComponent(origin + '/manual.pdf')}`);
+    await opened.close();
+  });
 
   await check('沒有任何頁面錯誤', async () => {
     assert.deepEqual(errors, []);

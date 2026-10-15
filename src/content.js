@@ -296,7 +296,7 @@ const SKIP_TAGS = new Set(['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE', 'TEXTAREA'
 // CoCo 自己的介面
 const SKIP_SELECTOR = [
   '.immersive-translation-container', '.coco-bilingual', '#custom-context-menu', '#input-box', '#translation-box',
-  '#coco-selection-toolbar', '#coco-word-card', '#coco-yt-subtitle', '#coco-yt-transcript', '.ytp-caption-window-container',
+  '#coco-selection-toolbar', '#coco-word-card', '#coco-yt-subtitle', '#coco-yt-transcript', '.coco-reader', '.ytp-caption-window-container',
   '#original-text-tooltip', '#copy-tooltip', '#coco-error-toast'
 ].join(', ');
 
@@ -807,6 +807,8 @@ async function translatePageUnits(units, fragmentNodes, { fromMutation = false }
 
 const handleTranslation = async target => {
   if (!isEnabled || !target || target.closest('.immersive-translation-container')) return;
+  // 我們自己的介面、已經排好雙語的地方（文件翻譯頁、字幕側欄）不用再觸發翻譯
+  if (target.closest?.('#coco-yt-transcript, .coco-reader, #coco-word-card, #coco-selection-toolbar')) return;
   const container = getClosestContentContainer(target);
   if (!container || suppressTranslationMap.has(container)) return;
 
@@ -1195,9 +1197,10 @@ const getSelectionInfo = () => {
     ? range.commonAncestorContainer.parentElement
     : range.commonAncestorContainer;
   if (!element) return null;
-  // YouTube 字幕側欄是我們自己的，整頁翻譯要跳過，但裡面的字要能查單字
-  const inTranscript = !!element.closest('#coco-yt-transcript');
-  if (!inTranscript && element.closest(`${SKIP_SELECTOR}, #coco-selection-toolbar, #coco-word-card`)) return null;
+  // YouTube 字幕側欄、文件翻譯頁是我們自己排好的雙語，整頁翻譯要跳過，但裡面的字要能查單字
+  if (element.closest('#coco-selection-toolbar, #coco-word-card')) return null;
+  const inTranscript = !!element.closest('#coco-yt-transcript, .coco-reader');
+  if (!inTranscript && element.closest(SKIP_SELECTOR)) return null;
   const block = getClosestContentContainer(element) || element;
   return {
     text,

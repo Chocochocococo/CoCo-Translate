@@ -50,12 +50,14 @@ export function makeZip(files) {
 
 const W = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
 
-/** 假的 Word 檔：paragraphs 是 [文字或 runs 陣列, 樣式 ID] */
+/** 假的 Word 檔：paragraphs 是 [文字或 runs 陣列, 樣式 ID]，或 { table: 儲存格的二維陣列 } */
 export function makeDocx(paragraphs, { headingStyleId = 'Heading1', headingStyleName = 'heading 1' } = {}) {
   const runs = text => (Array.isArray(text) ? text : [text]).map(part => part === '\t' ? '<w:r><w:tab/></w:r>'
     : part === '\n' ? '<w:r><w:br/></w:r>' : `<w:r><w:t xml:space="preserve">${part}</w:t></w:r>`).join('');
-  const body = paragraphs.map(([text, style]) =>
-    `<w:p>${style ? `<w:pPr><w:pStyle w:val="${style}"/></w:pPr>` : ''}${runs(text)}</w:p>`).join('');
+  const paragraph = ([text, style]) => `<w:p>${style ? `<w:pPr><w:pStyle w:val="${style}"/></w:pPr>` : ''}${runs(text)}</w:p>`;
+  // { table: [['A', 'B'], ['1', '2']] } 是一個表格
+  const table = rows => `<w:tbl>${rows.map(cells => `<w:tr>${cells.map(cell => `<w:tc>${paragraph([cell])}</w:tc>`).join('')}</w:tr>`).join('')}</w:tbl>`;
+  const body = paragraphs.map(entry => (entry.table ? table(entry.table) : paragraph(entry))).join('');
   return makeZip([
     ['[Content_Types].xml', '<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"/>'],
     ['word/document.xml', `<?xml version="1.0" encoding="UTF-8"?><w:document ${W}><w:body>${body}<w:sectPr/></w:body></w:document>`],
@@ -63,14 +65,17 @@ export function makeDocx(paragraphs, { headingStyleId = 'Heading1', headingStyle
   ]);
 }
 
-/** 假的 EPUB：chapters 是 [檔名, XHTML 的 body] */
-export function makeEpub(chapters, { title = 'Test Book', encrypted = false } = {}) {
-  const manifest = chapters.map(([file], i) => `<item id="c${i}" href="text/${file}" media-type="application/xhtml+xml"/>`).join('');
+/** 假的 EPUB：chapters 是 [檔名, XHTML 的 body]；toc 是 { 檔名: 目錄上的章名 }（EPUB 3 的 nav） */
+export function makeEpub(chapters, { title = 'Test Book', encrypted = false, toc = null } = {}) {
+  const navItem = toc ? '<item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>' : '';
+  const manifest = navItem + chapters.map(([file], i) => `<item id="c${i}" href="text/${file}" media-type="application/xhtml+xml"/>`).join('');
   const spine = chapters.map((_, i) => `<itemref idref="c${i}"/>`).join('');
   return makeZip([
     ['mimetype', 'application/epub+zip', { store: true }],
     ['META-INF/container.xml', '<?xml version="1.0"?><container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>'],
     ...(encrypted ? [['META-INF/encryption.xml', `<encryption>${chapters.map(([file]) => `<CipherReference URI="OEBPS/text/${file}"/>`).join('')}</encryption>`]] : []),
+    ...(toc ? [['OEBPS/nav.xhtml', `<?xml version="1.0" encoding="UTF-8"?><html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops"><body><nav epub:type="toc"><ol>${
+      Object.entries(toc).map(([file, label]) => `<li><a href="text/${file}#start">${label}</a></li>`).join('')}</ol></nav></body></html>`]] : []),
     ['OEBPS/content.opf', `<?xml version="1.0"?><package xmlns="http://www.idpf.org/2007/opf" version="3.0"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>${title}</dc:title></metadata><manifest>${manifest}</manifest><spine>${spine}</spine></package>`],
     ...chapters.map(([file, body]) => [`OEBPS/text/${file}`,
       `<?xml version="1.0" encoding="UTF-8"?><html xmlns="http://www.w3.org/1999/xhtml"><head><title>x</title></head><body>${body}</body></html>`])

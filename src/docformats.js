@@ -118,14 +118,39 @@ const DocFormats = (() => {
       return tidy(text);
     };
 
+    // 表格：一列一段，儲存格用「 | 」隔開（一格一段太零碎，翻譯也少了上下文）
+    const closest = (node, name) => {
+      for (let el = node.parentNode; el && el.nodeType === 1; el = el.parentNode) {
+        if (el.localName === name && el.namespaceURI === W) return el;
+      }
+      return null;
+    };
+    const rows = new Map();
     for (const paragraph of doc.getElementsByTagNameNS(W, 'p')) {
       const text = textOf(paragraph);
       if (!text) continue;
+      const row = closest(paragraph, 'tr');
+      if (row) {
+        if (!rows.has(row)) {
+          const entry = { cells: new Map(), heading: false };
+          rows.set(row, entry);
+          items.push(entry);
+        }
+        const cell = closest(paragraph, 'tc');
+        const cells = rows.get(row).cells;
+        cells.set(cell, [...(cells.get(cell) || []), text]);
+        continue;
+      }
       const pPr = wChild(paragraph, 'pPr');
       const style = wAttr(wChild(pPr, 'pStyle'), 'val');
       const heading = !!wChild(pPr, 'outlineLvl') || (style != null && headingStyles.has(style)) || /^(heading|title)/i.test(style || '');
       items.push({ text, heading });
     }
+
+    items.forEach(item => {
+      if (item.cells) item.text = [...item.cells.values()].map(texts => texts.join(' ')).join(' | ');
+      delete item.cells;
+    });
 
     const core = await zip.readText('docProps/core.xml');
     const title = core ? (parseXml(core).getElementsByTagNameNS('http://purl.org/dc/elements/1.1/', 'title')[0]?.textContent || '').trim() : '';
@@ -135,7 +160,7 @@ const DocFormats = (() => {
   // ---------------- EPUB ----------------
   const BLOCK = new Set(['address', 'article', 'aside', 'blockquote', 'body', 'caption', 'dd', 'div', 'dl', 'dt', 'figcaption', 'figure',
     'footer', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'header', 'hr', 'li', 'main', 'nav', 'ol', 'p', 'pre', 'section', 'table', 'tbody',
-    'td', 'tfoot', 'th', 'thead', 'tr', 'ul']);
+    'tfoot', 'thead', 'tr', 'ul']);
   // rt、rp 是日文小說的注音假名，留著會變成「漢字かんじ」
   const SKIP = new Set(['script', 'style', 'rt', 'rp', 'head', 'title', 'svg', 'math']);
 
@@ -145,8 +170,9 @@ const DocFormats = (() => {
     let buffer = '';
     let headingDepth = 0;
     let preDepth = 0;
+    let cellDepth = 0;
     const flush = () => {
-      const text = tidy(buffer);
+      const text = tidy(buffer).replace(/^\|\s*|\s*\|$/g, '');
       buffer = '';
       if (text) items.push({ text, heading: headingDepth > 0 });
     };
@@ -163,8 +189,19 @@ const DocFormats = (() => {
           buffer += '\n';
           continue;
         }
-        if (!BLOCK.has(tag)) {
+        // 表格的儲存格不分段：同一列接成一段，用「 | 」隔開
+        if (tag === 'td' || tag === 'th') {
+          if (buffer.trim()) buffer += ' | ';
+          cellDepth++;
           walk(child);
+          cellDepth--;
+          continue;
+        }
+        // 儲存格裡的 <p>、<div> 也不分段，空一格就好
+        if (!BLOCK.has(tag) || (cellDepth && tag !== 'table')) {
+          if (BLOCK.has(tag)) buffer += ' ';
+          walk(child);
+          if (BLOCK.has(tag)) buffer += ' ';
           continue;
         }
         const isHeading = /^h[1-6]$/.test(tag);
@@ -187,6 +224,38 @@ const DocFormats = (() => {
     return decodeURIComponent(url.pathname.slice(1));
   };
 
+  // 目錄上的章名：EPUB 3 的 nav、EPUB 2 的 toc.ncx（兩種都有的書很多，先到先贏）
+  const readTocTitles = async (zip, manifestItems) => {
+    const titles = new Map();
+    const add = (base, href, label) => {
+      const text = (label || '').replace(/\s+/g, ' ').trim();
+      if (!href || !text) return;
+      const path = resolvePath(base, href.split('#')[0]);
+      if (!titles.has(path)) titles.set(path, text);
+    };
+    const nav = manifestItems.find(item => /\bnav\b/.test(item.properties));
+    const ncx = manifestItems.find(item => /dtbncx/i.test(item.type) || /\.ncx$/i.test(item.path));
+    try {
+      if (nav) {
+        const doc = parseXml(await zip.readText(nav.path) || '', 'application/xhtml+xml');
+        const navs = [...doc.getElementsByTagName('nav')];
+        const toc = navs.find(el => /toc/.test(el.getAttribute('epub:type') || el.getAttributeNS('http://www.idpf.org/2007/ops', 'type') || '')) || navs[0];
+        for (const a of toc?.getElementsByTagName('a') || []) add(nav.path, a.getAttribute('href'), a.textContent);
+      }
+      if (ncx) {
+        const doc = parseXml(await zip.readText(ncx.path) || '');
+        for (const point of [...doc.getElementsByTagName('*')].filter(el => el.localName === 'navPoint')) {
+          const label = [...point.children].find(el => el.localName === 'navLabel');
+          const content = [...point.children].find(el => el.localName === 'content');
+          add(ncx.path, content?.getAttribute('src'), label?.textContent);
+        }
+      }
+    } catch (e) {
+      // 目錄壞掉不影響讀正文
+    }
+    return titles;
+  };
+
   /**
    * @param {Uint8Array} bytes
    * @returns {Promise<{title: string, chapters: {title: string, items: {text: string, heading: boolean}[]}[]}>}
@@ -202,7 +271,8 @@ const DocFormats = (() => {
 
     const manifest = new Map(byLocalName('item').map(item => [item.getAttribute('id'), {
       path: resolvePath(opfPath, item.getAttribute('href') || ''),
-      type: item.getAttribute('media-type') || ''
+      type: item.getAttribute('media-type') || '',
+      properties: item.getAttribute('properties') || ''
     }]));
     const spine = byLocalName('itemref')
       .filter(ref => ref.getAttribute('linear') !== 'no')
@@ -217,6 +287,7 @@ const DocFormats = (() => {
       throw error;
     }
 
+    const tocTitles = await readTocTitles(zip, [...manifest.values()]);
     const chapters = [];
     for (const item of spine) {
       const html = await zip.readText(item.path);
@@ -225,7 +296,9 @@ const DocFormats = (() => {
       const body = doc.getElementsByTagName('body')[0] || doc.documentElement;
       const items = paragraphsFromHtml(body);
       if (!items.length) continue;
-      const title = (items.find(p => p.heading)?.text || '').split('\n')[0].slice(0, 80);
+      // 章名先用目錄上的（最完整），沒有才用章節裡的第一個標題
+      const heading = (items.find(p => p.heading)?.text || '').replace(/\s*\n\s*/g, ' ');
+      const title = (tocTitles.get(item.path) || heading).slice(0, 80);
       chapters.push({ title, items });
     }
     const title = (byLocalName('title')[0]?.textContent || '').trim();
@@ -245,7 +318,7 @@ const DocFormats = (() => {
    * @returns {{format: 'srt'|'vtt', header: string, cues: {id: string, timing: string, lines: string[], text: string}[]}}
    */
   const parseSubtitles = text => {
-    const source = String(text || '').replace(/^﻿/, '').replace(/\r\n?/g, '\n');
+    const source = String(text || '').replace(/^\ufeff/, '').replace(/\r\n?/g, '\n');
     const format = /^WEBVTT/.test(source) ? 'vtt' : 'srt';
     const blocks = source.split(/\n[ \t]*\n+/);
     let header = '';

@@ -120,14 +120,15 @@ const DOCX = makeDocx([
   ['Quarterly Report', 'Title'],
   ['Overview', '1'],
   [['Sales grew by ', '12%', ' this quarter.']],
-  [['Line one', '\n', 'Line two']]
+  [['Line one', '\n', 'Line two']],
+  { table: [['Item', 'Cost'], ['Milk', '$5']] }
 ], { headingStyleId: '1', headingStyleName: 'heading 1' });
 const EPUB_CHAPTERS = [
   ['cover.xhtml', '<div><img src="cover.jpg" alt=""/></div>'],
   ['ch1.xhtml', '<h1>Chapter One</h1><p>It was a <em>dark</em> and stormy night.</p><p><ruby>漢<rt>かん</rt></ruby>字</p><div><p>Nested</p> tail text</div>'],
-  ['ch2.xhtml', '<p>No heading here.</p>']
+  ['ch2.xhtml', '<p>No heading here.</p><table><tr><th>Item</th><th><p>Cost</p></th></tr><tr><td>Milk</td><td>$5</td></tr></table>']
 ];
-const EPUB = makeEpub(EPUB_CHAPTERS);
+const EPUB = makeEpub(EPUB_CHAPTERS, { toc: { 'ch1.xhtml': 'Chapter One: The Night' } });
 const EPUB_DRM = makeEpub(EPUB_CHAPTERS, { encrypted: true });
 const SRT = '1\n00:00:01,000 --> 00:00:03,000\n<i>Hello there,</i>\nmy friend.\n\n2\n00:01:04,000 --> 00:01:05,000\nGoodbye.\n';
 const FILES = {
@@ -1186,25 +1187,26 @@ try {
   // Word
   await reader.goto(`chrome-extension://${extId}/reader.html?file=${encodeURIComponent(origin + '/report.docx')}`);
   await reader.waitForSelector('#textPane .para', { timeout: 5000 });
-  await check('文件翻譯：Word 的段落、標題（中文版 Word 的樣式 ID 也認得）、換行', async () => {
+  await check('文件翻譯：Word 的段落、標題（中文版 Word 的樣式 ID 也認得）、換行，表格一列一段', async () => {
     const paras = await reader.$$eval('.para', els => els.map(e => [e.querySelector('.orig').textContent, e.classList.contains('heading')]));
-    assert.deepEqual(paras, [['Quarterly Report', true], ['Overview', true], ['Sales grew by 12% this quarter.', false], ['Line one\nLine two', false]]);
+    assert.deepEqual(paras, [['Quarterly Report', true], ['Overview', true], ['Sales grew by 12% this quarter.', false], ['Line one\nLine two', false],
+      ['Item | Cost', false], ['Milk | $5', false]]);
     await reader.waitForFunction(() => [...document.querySelectorAll('.para .trans')].every(t => t.textContent.startsWith('[譯]')), null, { timeout: 5000 });
   });
 
   // EPUB
   await reader.goto(`chrome-extension://${extId}/reader.html?file=${encodeURIComponent(origin + '/novel.epub')}`);
   await reader.waitForSelector('#textPane .para', { timeout: 5000 });
-  await check('文件翻譯：EPUB 照章節排，略過封面，注音假名不會混進正文', async () => {
-    assert.deepEqual(await reader.$$eval('.page-label', els => els.map(e => e.textContent)), ['Chapter One', '第 2 節']);
+  await check('文件翻譯：EPUB 照章節排、章名用目錄上的，略過封面，注音假名不會混進正文', async () => {
+    assert.deepEqual(await reader.$$eval('.page-label', els => els.map(e => e.textContent)), ['Chapter One: The Night', '第 2 節']);
     assert.deepEqual(await reader.$$eval('.para .orig', els => els.map(e => e.textContent)),
-      ['Chapter One', 'It was a dark and stormy night.', '漢字', 'Nested', 'tail text', 'No heading here.']);
+      ['Chapter One', 'It was a dark and stormy night.', '漢字', 'Nested', 'tail text', 'No heading here.', 'Item | Cost', 'Milk | $5']);
   });
   await check('文件翻譯：EPUB 匯出的雙語文字檔用章節名稱分隔', async () => {
     const [download] = await Promise.all([reader.waitForEvent('download', { timeout: 10000 }), reader.click('#exportBtn')]);
     assert.equal(download.suggestedFilename(), 'novel.bilingual.txt');
     const text = fs.readFileSync(await download.path(), 'utf8');
-    assert.ok(text.startsWith('── Chapter One ──\n\nChapter One\n[譯]Chapter One\n'), text.slice(0, 80));
+    assert.ok(text.startsWith('── Chapter One: The Night ──\n\nChapter One\n[譯]Chapter One\n'), text.slice(0, 80));
     assert.ok(text.includes('── 第 2 節 ──\n\nNo heading here.\n[譯]No heading here.'));
   });
   await reader.goto(`chrome-extension://${extId}/reader.html?file=${encodeURIComponent(origin + '/locked.epub')}`);

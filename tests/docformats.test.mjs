@@ -30,7 +30,7 @@ test('DocFormats: 讀 zip（壓縮、不壓縮、中文檔名、大小寫不同�
 });
 
 test('DocFormats: SRT 拆成字幕，去掉標記、多行接成一句', () => {
-  const srt = '﻿1\r\n00:00:01,000 --> 00:00:03,500\r\n<i>Hello there,</i>\r\nmy friend.\r\n\r\n2\r\n00:01:02,000 --> 00:01:04,000\r\n{\\an8}Look up!\r\n\r\n3\r\n01:00:00,000 --> 01:00:02,000\r\n這是中文\r\n字幕\r\n';
+  const srt = '\ufeff1\r\n00:00:01,000 --> 00:00:03,500\r\n<i>Hello there,</i>\r\nmy friend.\r\n\r\n2\r\n00:01:02,000 --> 00:01:04,000\r\n{\\an8}Look up!\r\n\r\n3\r\n01:00:00,000 --> 01:00:02,000\r\n這是中文\r\n字幕\r\n';
   const parsed = plain(DocFormats.parseSubtitles(srt));
   assert.equal(parsed.format, 'srt');
   assert.deepEqual(parsed.cues.map(c => c.text), ['Hello there, my friend.', 'Look up!', '這是中文字幕']);

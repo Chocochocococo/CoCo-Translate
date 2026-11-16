@@ -5,8 +5,8 @@
 const DocParse = (() => {
   const CJK = /[぀-ヿ㐀-鿿가-힯豈-﫿＀-￯]/;
   const SENTENCE_END = /[.!?。！？…:：]["'”’」』)\]）]*$/;
-  // 項目符號、編號開頭的一行一定是新的一段：•、-、1.、(1)、①、一、、Step 3
-  const BULLET = /^(?:[•●○◦▪■□◆◇▶►‣⁃\-–—*・]\s*|\(?\d{1,3}[.)、]\s*|[(（]\d{1,3}[)）]\s*|[①-⑳]|[一二三四五六七八九十]+、|step\s*\d+)/i;
+  // 項目符號、編號開頭的一行一定是新的一段：•、-、1.、(1)、①、一、、Step 3（\uf0b7 這些是 Word 用 Symbol 字型畫的項目符號）
+  const BULLET = /^(?:[•●○◦▪■□◆◇▶►‣⁃\-–—*・\uf0b7\uf0a7\uf076\uf0d8\uf0fc]\s*|\(?\d{1,3}[.)、]\s*|[(（]\d{1,3}[)）]\s*|[①-⑳]|[一二三四五六七八九十]+、|step\s*\d+)/i;
   // 頁首頁尾的頁碼：12、- 12 -、Page 3 of 10、3 / 10、第 3 頁
   const PAGE_NUMBER = /^(?:[-–—\s]*(?:page\s*)?\d{1,4}(?:\s*(?:of|\/)\s*\d{1,4})?[-–—\s]*|第\s*\d{1,4}\s*頁(?:\s*[/／共]\s*\d{1,4}\s*頁?)?)$/i;
 
@@ -28,7 +28,8 @@ const DocParse = (() => {
     if (!right) return left;
     const last = left.slice(-1);
     const first = right.charAt(0);
-    if (/[A-Za-z]-$/.test(left) && /^[a-z]/.test(right)) return left.slice(0, -1) + right;
+    // 行尾斷字：一般的 -，還有排版軟體自動斷字用的 ‐（U+2010）、軟連字號（U+00AD）
+    if (/[A-Za-z][-\u2010\u00ad]$/.test(left) && /^[a-z]/.test(right)) return left.slice(0, -1) + right;
     if (isCJK(last) || isCJK(first)) return left + right;
     return `${left} ${right}`;
   };
@@ -123,8 +124,16 @@ const DocParse = (() => {
       if (gap > 0 && gap < typicalSize * 3) gaps.push(gap);
     }
     const lineGap = median(gaps) || typicalSize * 1.2;
-    const rightEdge = median(lines.map(line => line.right).filter(right => right > 0)) || 0;
     const isHeading = line => line.size > typicalSize * HEADING_RATIO;
+    // 這一行所在的欄：跟它左右重疊的行（雙欄排版時，左欄只跟左欄比，不會被右欄或跨欄標題拉寬）
+    const quantile = (values, q) => {
+      const sorted = [...values].sort((a, b) => a - b);
+      return sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * q))];
+    };
+    const columnOf = line => {
+      const overlapping = lines.filter(other => other.x < line.right && other.right > line.x);
+      return { left: quantile(overlapping.map(o => o.x), 0.2), right: quantile(overlapping.map(o => o.right), 0.8) };
+    };
 
     const paragraphs = [];
     let current = null;
@@ -134,8 +143,14 @@ const DocParse = (() => {
       if (current && prev) {
         const gap = prev.y - line.y;
         const sizeChanged = Math.abs(line.size - prev.size) > typicalSize * 0.15;
-        const shortSentenceEnd = SENTENCE_END.test(prev.text) && rightEdge && prev.right < rightEdge - typicalSize * 2;
-        startNew = gap > lineGap * 1.4 || gap < -typicalSize || sizeChanged || BULLET.test(line.text) || shortSentenceEnd;
+        const column = columnOf(prev);
+        const room = column.right - prev.right;
+        // 上一行是句尾又沒排滿；或是短到不像折行（項目符號是畫出來的、抓不到字的清單）。
+        // 下一行小寫開頭就是同一句話還沒講完（表格裡窄窄的儲存格會這樣折行），別切開
+        const shortSentenceEnd = SENTENCE_END.test(prev.text) && room > typicalSize * 2;
+        const muchShorter = room > (column.right - column.left) * 0.4 &&
+          /^[A-Z0-9"“‘(]/.test(line.text) && !/(?:[,;:\-–—]|\b(?:and|or|of|the|a|an|to|in|with|for))$/i.test(prev.text);
+        startNew = gap > lineGap * 1.4 || gap < -typicalSize || sizeChanged || BULLET.test(line.text) || shortSentenceEnd || muchShorter;
       }
       if (startNew) {
         current = { text: line.text, heading: isHeading(line) };

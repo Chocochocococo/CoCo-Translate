@@ -79,6 +79,47 @@ test('DocParse: 只差數字的頁首會拿掉，但只差數字的內文、每�
   assert.deepEqual(paragraphs[1].map(x => x.text), ['Chapter 2', 'Read section 2 first.', '- Unplug part 2 before cleaning.']);
 });
 
+test('DocParse: 排版軟體自動斷字的 ‐（U+2010）、軟連字號也會接回去', () => {
+  assert.equal(DocParse.joinText('should always be fol\u2010', 'lowed by'), 'should always be followed by');
+  assert.equal(DocParse.joinText('mov\u00ad', 'ing it'), 'moving it');
+  assert.equal(DocParse.joinText('heat-', 'Resistant'), 'heat- Resistant');
+});
+
+test('DocParse: 沒排滿的短行接大寫是下一項（抓不到項目符號的清單），接小寫是同一句沒講完', () => {
+  const long = 'This body line is long enough to reach the right edge of the text column on the page.';
+  const [paragraphs] = plain(DocParse.paragraphsFromPdfPages([page([
+    long,
+    'and it continues here.',
+    ['Cocoa Mini base with power cord', { gap: 20 }],
+    'Glass jug with lid',
+    'Measuring spoon (10 g)',
+    ['The drink is not hot', { gap: 20 }],
+    'enough to enjoy.',
+    long
+  ])]));
+  assert.deepEqual(paragraphs.map(p => p.text), [
+    `${long} and it continues here.`,
+    'Cocoa Mini base with power cord',
+    'Glass jug with lid',
+    'Measuring spoon (10 g)',
+    'The drink is not hot enough to enjoy.',
+    long
+  ]);
+});
+
+test('DocParse: 雙欄排版，左欄的行只跟左欄比寬度', () => {
+  const left = (text, y) => item(text, 50, y);
+  const right = (text, y) => item(text, 320, y);
+  const [paragraphs] = plain(DocParse.paragraphsFromPdfPages([[
+    left('Left column text goes on and on', 700), left('Continues in the left column', 688), left('Last line of the left column.', 676),
+    right('Right column text goes on and on', 700), right('Continues in the right column', 688), right('Last line of right column.', 676)
+  ]]));
+  assert.deepEqual(paragraphs.map(p => p.text), [
+    'Left column text goes on and on Continues in the left column Last line of the left column.',
+    'Right column text goes on and on Continues in the right column Last line of right column.'
+  ]);
+});
+
 test('DocParse: 同一行切成好幾個項目時，英文補空格、中文不補', () => {
   const lines = plain(DocParse.linesFromItems([
     item('Hello', 50, 700, { eol: false }), item('world', 80, 700, { eol: true }),

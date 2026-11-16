@@ -97,6 +97,29 @@ body.dragging .drop-card {
   font-size: 12px;
 }
 
+/* 打不開電腦裡的檔案時的說明 */
+.local-help {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.drop-card .local-text {
+  color: var(--text);
+}
+
+.local-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+  margin: 12px 0;
+}
+
+.drop-card .local-steps {
+  font-size: 12px;
+}
+
 /* 左邊：PDF 一頁一頁 */
 .pdf-pane {
   flex: 1 1 50%;

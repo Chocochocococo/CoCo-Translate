@@ -231,6 +231,7 @@ const resetView = name => {
   $('pdfPane').classList.add('hidden');
   $('textPane').classList.add('hidden');
   showDropError('');
+  $('localFileHelp').classList.add('hidden');
 };
 
 const showError = message => {
@@ -379,12 +380,32 @@ const readLocalFile = url => new Promise((resolve, reject) => {
   xhr.send();
 });
 
+// 電腦裡的檔案（file://）：Firefox 一律不准擴充功能讀，Chrome 要使用者打開「允許存取檔案網址」
+const isChromeExtension = location.protocol === 'chrome-extension:';
+const fileAccessAllowed = () => new Promise(resolve => {
+  if (!isChromeExtension || !chrome.extension?.isAllowedFileSchemeAccess) return resolve(false);
+  chrome.extension.isAllowedFileSchemeAccess(allowed => resolve(!!allowed));
+});
+
+// 讀不到的時候：請使用者選一次檔案（告訴她選哪一個）；Chrome 另外給一個按鈕，打開權限以後就能直接翻
+const showLocalFileHelp = name => {
+  showError('');
+  $('localFileText').textContent = i18n(isChromeExtension ? 'readerLocalFileChrome' : 'readerLocalFile', { name });
+  $('allowFilesBtn').classList.toggle('hidden', !isChromeExtension);
+  $('allowFilesSteps').classList.add('hidden');
+  $('localFileHelp').classList.remove('hidden');
+};
+
 const openUrl = async url => {
   const name = decodeURIComponent(new URL(url).pathname.split('/').pop() || url);
   resetView(name);
   setStatus(i18n('readerLoading'));
   try {
     if (url.startsWith('file:')) {
+      if (!(await fileAccessAllowed())) {
+        showLocalFileHelp(name);
+        return;
+      }
       await openBytes(await readLocalFile(url), name);
       return;
     }
@@ -394,8 +415,8 @@ const openUrl = async url => {
     await openBytes(new Uint8Array(await response.arrayBuffer()), name, type);
   } catch (error) {
     console.error('CoCo: 下載文件失敗', error);
-    // 本機檔案（file://）：Firefox 一律不准，Chrome 要另外開「允許存取檔案網址」
-    showError(url.startsWith('file:') ? i18n('readerLocalFile') : i18n('readerLoadFailed', { error: error?.message || String(error) }));
+    if (url.startsWith('file:')) showLocalFileHelp(name);
+    else showError(i18n('readerLoadFailed', { error: error?.message || String(error) }));
   }
 };
 
@@ -461,7 +482,8 @@ const updateExportButtons = () => {
 
 // ---------------- 啟動 ----------------
 const start = () => {
-  getStorageLang().then(lang => {
+  // 介面語言先套好再開檔，頁碼、說明文字才不會是另一種語言
+  const languageReady = getStorageLang().then(lang => {
     applyLanguage(lang || 'zh');
     if (documentName) document.title = `${documentName} – CoCo`;
     updateExportButtons();
@@ -495,8 +517,14 @@ const start = () => {
     openFile(event.dataTransfer?.files?.[0]);
   });
 
+  $('pickLocalBtn').addEventListener('click', () => $('fileInput').click());
+  $('allowFilesBtn').addEventListener('click', () => {
+    chrome.tabs.create({ url: `chrome://extensions/?id=${chrome.runtime.id}` });
+    $('allowFilesSteps').classList.remove('hidden');
+  });
+
   const file = new URLSearchParams(location.search).get('file');
-  if (file) openUrl(file);
+  if (file) languageReady.then(() => openUrl(file));
 };
 
 start();

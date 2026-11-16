@@ -89,7 +89,7 @@ function sendPageCommand(type) {
 function initPageButton() {
   $('pageToggleBtn').addEventListener('click', () => {
     if (documentUrl) {
-      openDocumentReader(documentUrl);
+      openDocumentReader(documentUrl, { replace: true });
       return;
     }
     if (!pageSupported || !activeTab) return;
@@ -193,10 +193,13 @@ function initSettings() {
   bindSwitch('youTubeTranscriptPanel', 'youTubeTranscriptPanel', { defaultValue: true });
 }
 
-function openDocumentReader(url = '') {
-  const path = url ? `reader.html?file=${encodeURIComponent(url)}` : 'reader.html';
-  chrome.tabs.create({ url: chrome.runtime.getURL(path), ...(activeTab ? { index: activeTab.index + 1 } : {}) });
-  window.close();
+// 交給 background 開：讀得到的文件直接在目前分頁翻，讀不到的本機檔案才開新分頁
+function openDocumentReader(url = '', { replace = false } = {}) {
+  const tab = activeTab ? { id: activeTab.id, index: activeTab.index } : null;
+  chrome.runtime.sendMessage({ type: 'OPEN_DOCUMENT_READER', url, tab, replace }, () => {
+    void chrome.runtime.lastError;
+    window.close();
+  });
 }
 
 function initLinks() {

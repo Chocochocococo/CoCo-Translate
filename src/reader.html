@@ -31,6 +31,15 @@
         <p data-i18n="readerDropHint"></p>
         <p class="privacy" data-i18n="readerPrivacy"></p>
         <p id="dropError" class="warning hidden"></p>
+        <!-- 打不開電腦裡的檔案（file://）時：選一次檔案；Chrome 另外教怎麼打開權限，以後就能直接翻 -->
+        <div id="localFileHelp" class="local-help hidden">
+          <p id="localFileText" class="local-text"></p>
+          <div class="local-actions">
+            <button id="pickLocalBtn" class="btn" type="button" data-i18n="readerPickFile">選擇檔案</button>
+            <button id="allowFilesBtn" class="btn secondary hidden" type="button" data-i18n="readerAllowFiles">以後直接開啟</button>
+          </div>
+          <p id="allowFilesSteps" class="local-steps hidden" data-i18n="readerAllowFilesSteps"></p>
+        </div>
       </div>
     </section>
     <section id="pdfPane" class="pane pdf-pane hidden" aria-label="PDF"></section>

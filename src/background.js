@@ -38,12 +38,23 @@ const MENU_ITEMS = [
   { id: "translate-document-page", title: "Translate This Document", contexts: ["page", "frame"], documentUrlPatterns: DOCUMENT_URL_PATTERNS }
 ];
 
-// 用文件翻譯頁打開（放在目前分頁的右邊）
-const openDocumentReader = (url, tab) => {
-  chrome.tabs.create({
-    url: chrome.runtime.getURL(`reader.html?file=${encodeURIComponent(url)}`),
-    ...(tab && tab.index != null ? { index: tab.index + 1 } : {})
-  });
+// 擴充功能讀得到這個網址嗎？電腦裡的檔案（file://）Firefox 一律不准，Chrome 要使用者打開「允許存取檔案網址」
+const isFirefox = chrome.runtime.getURL('').startsWith('moz-extension:');
+const canReadUrl = url => new Promise(resolve => {
+  if (!/^file:/i.test(url)) return resolve(true);
+  if (isFirefox || !chrome.extension?.isAllowedFileSchemeAccess) return resolve(false);
+  chrome.extension.isAllowedFileSchemeAccess(allowed => resolve(!!allowed));
+});
+
+// 用文件翻譯頁打開。replace：讀得到的話直接在原本的分頁翻（上一頁就回到原本的 PDF）；
+// 讀不到的本機檔案開新分頁，原本的 PDF 留著（Chrome 打開檔案權限時會重新載入擴充功能，文件翻譯頁會被關掉）
+const openDocumentReader = async (url, tab, { replace = false } = {}) => {
+  const readerUrl = chrome.runtime.getURL(url ? `reader.html?file=${encodeURIComponent(url)}` : 'reader.html');
+  if (replace && url && tab?.id != null && await canReadUrl(url)) {
+    chrome.tabs.update(tab.id, { url: readerUrl });
+    return;
+  }
+  chrome.tabs.create({ url: readerUrl, ...(tab && tab.index != null ? { index: tab.index + 1 } : {}) });
 };
 
 // 先清空再建立，避免 onInstalled / onStartup 重複建立時噴 duplicate id
@@ -183,6 +194,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       broadcastToTabs({ type: "TOGGLE_TRANSLATION", isEnabled: message.isEnabled });
       return;
 
+    case 'OPEN_DOCUMENT_READER':
+      openDocumentReader(message.url || '', message.tab, { replace: !!message.replace });
+      sendResponse({ ok: true });
+      return;
+
     case 'SET_TARGET_LANGUAGE':
       storageSet({ targetLanguage: message.language });
       broadcastToTabs({ type: "UPDATE_TARGET_LANGUAGE", targetLanguage: message.language });
@@ -231,7 +247,7 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   } else if (info.menuItemId === "translate-document-link" && info.linkUrl) {
     openDocumentReader(info.linkUrl, tab);
   } else if (info.menuItemId === "translate-document-page") {
-    openDocumentReader(info.frameUrl || info.pageUrl || tab?.url, tab);
+    openDocumentReader(info.frameUrl || info.pageUrl || tab?.url, tab, { replace: !info.frameUrl });
   }
 });
 

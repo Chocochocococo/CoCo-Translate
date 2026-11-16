@@ -7,7 +7,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import assert from 'node:assert/strict';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const require = createRequire(import.meta.url);
 // 讓 context.route 也攔得到擴充功能 service worker 送出的請求（字典用假的資料）
@@ -1249,27 +1249,66 @@ try {
     assert.ok(!(await reader.isVisible('#exportAltBtn')));
   });
 
-  await check('文件翻譯：沒有本機檔案權限時，提示改用拖曳或開啟檔案', async () => {
-    await reader.goto(`chrome-extension://${extId}/reader.html?file=${encodeURIComponent('file:///tmp/coco-missing.pdf')}`);
-    await reader.waitForSelector('#dropError:not(.hidden)', { timeout: 5000 });
-    assert.match(await reader.textContent('#dropError'), /拖進來/);
+  // 電腦裡的檔案（file://）。用命令列載入的擴充功能預設就有「允許存取檔案網址」
+  const localPdf = path.join(userDataDir, 'local manual.pdf');
+  fs.writeFileSync(localPdf, PDF);
+  const localPdfUrl = pathToFileURL(localPdf).href;
+  await check('文件翻譯：有檔案權限時，電腦裡的 PDF 直接打開', async () => {
+    await reader.goto(`chrome-extension://${extId}/reader.html?file=${encodeURIComponent(localPdfUrl)}`);
+    await reader.waitForSelector('.page-block[data-page="3"]', { timeout: 10000 });
+    assert.equal(await reader.textContent('#docName'), 'local manual.pdf');
   });
+  const denyFileAccess = () => Object.defineProperty(chrome.extension, 'isAllowedFileSchemeAccess', { value: cb => cb(false), configurable: true });
+  const noAccessReader = await context.newPage();
+  noAccessReader.on('pageerror', err => errors.push('reader pageerror: ' + err.message));
+  await noAccessReader.addInitScript(denyFileAccess);
+  await noAccessReader.goto(`chrome-extension://${extId}/reader.html?file=${encodeURIComponent(localPdfUrl)}`);
+  await check('文件翻譯：沒有檔案權限時，說要選哪個檔案，並提供打開權限的按鈕', async () => {
+    await noAccessReader.waitForSelector('#localFileHelp:not(.hidden)', { timeout: 5000 });
+    assert.match(await noAccessReader.textContent('#localFileText'), /「local manual\.pdf」/);
+    assert.ok(await noAccessReader.isVisible('#allowFilesBtn'));
+    const [settingsTab] = await Promise.all([context.waitForEvent('page', { timeout: 5000 }), noAccessReader.click('#allowFilesBtn')]);
+    assert.equal(settingsTab.url(), `chrome://extensions/?id=${extId}`);
+    assert.ok(await noAccessReader.isVisible('#allowFilesSteps'));
+    await settingsTab.close();
+  });
+  await check('文件翻譯：沒有檔案權限時，選一次檔案就能翻', async () => {
+    const [chooser] = await Promise.all([noAccessReader.waitForEvent('filechooser', { timeout: 5000 }), noAccessReader.click('#pickLocalBtn')]);
+    await chooser.setFiles(localPdf);
+    await noAccessReader.waitForSelector('.page-block[data-page="3"]', { timeout: 10000 });
+    assert.ok(!(await noAccessReader.isVisible('#localFileHelp')));
+  });
+  await noAccessReader.close();
 
   // popup：目前分頁是 PDF 時，大按鈕改成「翻譯這份文件」
-  const pdfPopup = await context.newPage();
-  pdfPopup.on('pageerror', err => errors.push('pdf popup pageerror: ' + err.message));
-  await pdfPopup.addInitScript(([id, url]) => {
-    chrome.tabs.query = (q, cb) => cb([{ id, url, index: 0 }]);
-  }, [tabId, origin + '/manual.pdf']);
-  await pdfPopup.goto(`chrome-extension://${extId}/popup.html`);
-  await pdfPopup.waitForTimeout(400);
-  await check('popup：PDF 分頁的大按鈕用文件翻譯打開', async () => {
+  const docTab = await context.newPage();
+  await docTab.goto(origin + '/?doc');
+  const docTabId = await sw.evaluate(async () => (await chrome.tabs.query({})).find(t => t.url.endsWith('/?doc')).id);
+  const openPopupFor = async url => {
+    const popupPage = await context.newPage();
+    popupPage.on('pageerror', err => errors.push('pdf popup pageerror: ' + err.message));
+    await popupPage.addInitScript(([id, u]) => {
+      chrome.tabs.query = (q, cb) => cb([{ id, url: u, index: 1 }]);
+    }, [docTabId, url]);
+    await popupPage.goto(`chrome-extension://${extId}/popup.html`);
+    await popupPage.waitForTimeout(400);
+    return popupPage;
+  };
+  const pdfPopup = await openPopupFor(origin + '/manual.pdf');
+  await check('popup：PDF 分頁的大按鈕直接在原本的分頁翻譯', async () => {
     assert.equal(await pdfPopup.textContent('#pageToggleLabel'), '翻譯這份文件');
-    const [opened] = await Promise.all([context.waitForEvent('page', { timeout: 5000 }), pdfPopup.click('#pageToggleBtn')]);
+    await pdfPopup.click('#pageToggleBtn');
+    await docTab.waitForURL(`chrome-extension://${extId}/reader.html?file=${encodeURIComponent(origin + '/manual.pdf')}`, { timeout: 5000 });
+  });
+  await sw.evaluate(denyFileAccess);
+  const localPopup = await openPopupFor(localPdfUrl);
+  await check('popup：讀不到的本機 PDF 開新分頁，原本的 PDF 留著', async () => {
+    const [opened] = await Promise.all([context.waitForEvent('page', { timeout: 5000 }), localPopup.click('#pageToggleBtn')]);
     await opened.waitForLoadState();
-    assert.equal(opened.url(), `chrome-extension://${extId}/reader.html?file=${encodeURIComponent(origin + '/manual.pdf')}`);
+    assert.equal(opened.url(), `chrome-extension://${extId}/reader.html?file=${encodeURIComponent(localPdfUrl)}`);
     await opened.close();
   });
+  await sw.evaluate(() => delete chrome.extension.isAllowedFileSchemeAccess);
 
   await check('沒有任何頁面錯誤', async () => {
     assert.deepEqual(errors, []);

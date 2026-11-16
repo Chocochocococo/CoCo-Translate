@@ -33,7 +33,7 @@ CoCo Translate is a browser extension for Chrome and Firefox that shows translat
 
 The website and user guide are in Traditional Chinese: https://chocochocococo.github.io/CoCo-Translate/
 
-**Install**: the extension isn't in the browser stores yet.
+**Install**: the extension isn't in the browser stores yet. Download the latest version from [Releases](https://github.com/Chocochocococo/CoCo-Translate/releases/latest).
 - Chrome: download the Chrome zip, unzip it, open `chrome://extensions`, turn on Developer mode, and choose "Load unpacked".
 - Firefox: download the xpi, open `about:addons`, click the gear icon, and choose "Install Add-on From File…".
 

@@ -283,7 +283,7 @@
         <a class="btn primary" href="#install">免費安裝</a>
         <a class="btn ghost" href="#features">看看有什麼功能</a>
       </div>
-      <p class="facts"><span>版本 <span class="mono" data-version>1.7.2.0</span></span><span>開放原始碼</span><span>設定與金鑰只存在你的瀏覽器</span></p>
+      <p class="facts"><span>版本 <span class="mono" data-version>1.8.0.0</span></span><span>開放原始碼</span><span>設定與金鑰只存在你的瀏覽器</span></p>
     </div>
     <figure>
       <img class="shot-light" src="img/popup-light.png" alt="CoCo Translate 的彈出視窗：翻譯此頁按鈕、顯示方式、翻譯來源與各項開關" width="340" height="548">
@@ -390,7 +390,7 @@
         <div class="panel">
           <h3>Chrome</h3>
           <ol class="steps">
-            <li>到 <a href="https://github.com/Chocochocococo/CoCo-Translate/releases/tag/1.7.2.0">GitHub</a> 下載 Chrome 版的 zip，解壓縮成資料夾。</li>
+            <li>到 <a href="https://github.com/Chocochocococo/CoCo-Translate/releases/tag/1.8.0.0">GitHub</a> 下載 Chrome 版的 zip，解壓縮成資料夾。</li>
             <li>網址列輸入 <span class="mono">chrome://extensions</span>，打開右上角的「開發人員模式」。</li>
             <li>點「載入未封裝項目」，選擇剛才的資料夾。</li>
             <li>把 CoCo 釘選到工具列，完成。</li>
@@ -400,7 +400,7 @@
         <div class="panel">
           <h3>Firefox</h3>
           <ol class="steps">
-            <li>到 <a href="https://github.com/Chocochocococo/CoCo-Translate/releases/tag/1.7.2.0">GitHub</a> 下載 Firefox 版的 xpi 檔。</li>
+            <li>到 <a href="https://github.com/Chocochocococo/CoCo-Translate/releases/tag/1.8.0.0">GitHub</a> 下載 Firefox 版的 xpi 檔。</li>
             <li>網址列輸入 <span class="mono">about:addons</span>，點右上角的齒輪。</li>
             <li>選「從檔案安裝附加元件…」，選擇 xpi 檔。</li>
             <li>按「新增」，完成。</li>
@@ -589,6 +589,20 @@
         <h2>更新日記</h2>
         <p>從 1.5 開始整個重寫，下面是每一版改了什麼。</p>
       </div>
+
+      <article class="release">
+        <p class="when"><span class="mono">1.8.0.0</span>2026/11/16</p>
+        <div>
+          <ul>
+            <li>增加：文件翻譯！支援 PDF、Word（.docx）、EPUB、TXT 和字幕檔（.srt、.vtt）。PDF 左邊是原本的頁面，右邊每段原文下面接著譯文，捲到哪裡就翻到哪裡。</li>
+            <li>增加：在 PDF 這類文件的分頁按彈出視窗的「翻譯這份文件」，直接在原本的分頁翻譯；網址沒有 .pdf 的 PDF（例如 arXiv 論文）也認得。彈出視窗右上角、右鍵選單也能打開文件翻譯。</li>
+            <li>增加：PDF 每頁重複的頁首、頁尾、頁碼會自動拿掉，被換行切斷的句子和單字會接回來；EPUB 照章節排好，表格一列一段。</li>
+            <li>增加：匯出原文＋譯文的雙語文字檔；字幕檔可以匯出雙語字幕或只有譯文的字幕，時間軸不變。</li>
+            <li>增加：Chrome 打開「允許存取檔案網址」後，電腦裡的 PDF 也能直接翻譯；沒有權限時會提示要選哪個檔案。</li>
+            <li>增加：官網和設定頁加入贊助連結（Ko-fi、綠界）。</li>
+          </ul>
+        </div>
+      </article>
 
       <article class="release">
         <p class="when"><span class="mono">1.7.2.0</span>2026/10/3</p>
@@ -816,7 +830,7 @@
 
 <footer>
   <div class="wrap">
-    <span>CoCo Translate <span class="mono" data-version>1.7.2.0</span></span>
+    <span>CoCo Translate <span class="mono" data-version>1.8.0.0</span></span>
     <a href="https://github.com/Chocochocococo/CoCo-Translate">GitHub 原始碼</a>
     <a href="#support">🍫 贊助 CoCo</a>
     <span class="made">一個看不懂英文的人，和 ChatGPT、Claude 一起 Vibe Coding 寫出來的翻譯擴充。</span>

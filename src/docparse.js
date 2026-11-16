@@ -1,0 +1,245 @@
+// docparse.js — 文件翻譯用：把 PDF 的文字、TXT 檔整理成一段一段的段落
+// PDF 裡沒有「段落」，只有「這幾個字放在這個座標」；這裡把它們拼回人看得懂的段落，翻譯才通順
+"use strict";
+
+const DocParse = (() => {
+  const CJK = /[぀-ヿ㐀-鿿가-힯豈-﫿＀-￯]/;
+  const SENTENCE_END = /[.!?。！？…:：]["'”’」』)\]）]*$/;
+  // 項目符號、編號開頭的一行一定是新的一段：•、-、1.、(1)、①、一、、Step 3（\uf0b7 這些是 Word 用 Symbol 字型畫的項目符號）
+  const BULLET = /^(?:[•●○◦▪■□◆◇▶►‣⁃\-–—*・\uf0b7\uf0a7\uf076\uf0d8\uf0fc]\s*|\(?\d{1,3}[.)、]\s*|[(（]\d{1,3}[)）]\s*|[①-⑳]|[一二三四五六七八九十]+、|step\s*\d+)/i;
+  // 頁首頁尾的頁碼：12、- 12 -、Page 3 of 10、3 / 10、第 3 頁
+  const PAGE_NUMBER = /^(?:[-–—\s]*(?:page\s*)?\d{1,4}(?:\s*(?:of|\/)\s*\d{1,4})?[-–—\s]*|第\s*\d{1,4}\s*頁(?:\s*[/／共]\s*\d{1,4}\s*頁?)?)$/i;
+
+  // 字比內文大 15% 以上就當標題（11pt 內文配 13pt 小標也算）
+  const HEADING_RATIO = 1.15;
+
+  const median = values => {
+    const sorted = values.filter(Number.isFinite).sort((a, b) => a - b);
+    if (!sorted.length) return 0;
+    const mid = sorted.length >> 1;
+    return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+  };
+
+  const isCJK = char => !!char && CJK.test(char);
+
+  // 兩段文字接起來：英文斷字的連字號要拿掉、英文要空格、中日韓不用
+  const joinText = (left, right) => {
+    if (!left) return right;
+    if (!right) return left;
+    const last = left.slice(-1);
+    const first = right.charAt(0);
+    // 行尾斷字：一般的 -，還有排版軟體自動斷字用的 ‐（U+2010）、軟連字號（U+00AD）
+    if (/[A-Za-z][-\u2010\u00ad]$/.test(left) && /^[a-z]/.test(right)) return left.slice(0, -1) + right;
+    if (isCJK(last) || isCJK(first)) return left + right;
+    return `${left} ${right}`;
+  };
+
+  /**
+   * pdf.js 的 getTextContent() 項目 → 一行一行
+   * @param {{str: string, transform: number[], width: number, height: number, hasEOL?: boolean}[]} items
+   * @returns {{text: string, x: number, y: number, right: number, size: number}[]}
+   */
+  const linesFromItems = items => {
+    const lines = [];
+    let current = null;
+    const push = () => {
+      // 目錄的引導點「. . . . . . 12」縮成「…」，別把一整排點送去翻譯
+      if (current && current.text.trim()) lines.push({ ...current, text: current.text.replace(/\s+/g, ' ').replace(/(?:\s*\.){5,}\s*/g, ' … ').trim() });
+      current = null;
+    };
+    for (const item of items || []) {
+      const [, , c, d, x, y] = item.transform || [0, 0, 0, 0, 0, 0];
+      const size = Math.abs(d) || Math.hypot(c, d) || item.height || 10;
+      // 換行：y 座標差超過半個字高（PDF 的 y 往上增加）。
+      // 比這行小很多、又沒離開這行高度的字是上標、下標（作者旁邊的 ∗、註腳編號），接在同一行
+      const dy = current ? Math.abs(y - current.y) : 0;
+      const isScript = current && size < current.size * 0.85 && dy < current.size * 0.7;
+      if (current && !isScript && dy > Math.min(size, current.size) * 0.5) push();
+      const str = item.str || '';
+      if (str) {
+        if (!current) current = { text: '', x, y, right: x, size };
+        const gap = x - current.right;
+        const ref = Math.max(size, current.size);   // 上標字小，空隙要跟這行的字比
+        const needsSpace = current.text && !/\s$/.test(current.text) && !/^\s/.test(str) &&
+          (isCJK(current.text.slice(-1)) && isCJK(str.charAt(0)) ? gap > ref * 0.8 : gap > ref * 0.15);
+        current.text += (needsSpace ? ' ' : '') + str;
+        current.right = Math.max(current.right, x + (item.width || 0));
+        current.size = Math.max(current.size, size);
+      }
+      if (item.hasEOL) push();
+    }
+    push();
+    return lines;
+  };
+
+  // 頁首頁尾：同一個位置、同樣的字
+  const exactKey = line => `${Math.round((line.y || 0) / 4)}|${line.text.toLowerCase().replace(/\s+/g, ' ').trim()}`;
+  // 數字不算的版本（「Page 3 · 使用手冊」「Chapter 2 – Safety」）。只用在短的、看起來像頁首的行，
+  // 不然「Section 1 …」「- Unplug part 2 …」這種內文也會被當成頁首砍掉
+  const maskedKey = line => exactKey(line).replace(/\d+/g, '#');
+
+  /**
+   * 拿掉頁首、頁尾、頁碼：每頁最上面、最下面兩行，在大部分頁面都出現的就是頁首頁尾
+   * @param {Array<Array<{text: string, y: number, size: number}>>} pages 每頁的行（由上到下）
+   */
+  const removeRepeatedEdges = pages => {
+    const edgesOf = lines => [...new Set([...lines.slice(0, 2), ...lines.slice(-2)])];
+    const exactCounts = new Map();
+    const maskedCounts = new Map();
+    const count = (map, keys) => new Set(keys).forEach(key => map.set(key, (map.get(key) || 0) + 1));
+    pages.forEach(lines => {
+      count(exactCounts, edgesOf(lines).map(exactKey));
+      count(maskedCounts, edgesOf(lines).map(maskedKey));
+    });
+    const threshold = Math.max(2, Math.ceil(pages.length * 0.6));
+    const bodySize = median(pages.flat().map(line => line.size));
+    // 頁首頁尾通常字比較小，或是跟內文隔一段距離
+    const looksLikeEdge = (line, lines) => {
+      if (line.size < bodySize * 0.95) return true;
+      const i = lines.indexOf(line);
+      const inner = i < lines.length / 2 ? lines[i + 1] : lines[i - 1];
+      return !inner || Math.abs(inner.y - line.y) > Math.max(line.size, inner.size) * 2;
+    };
+    // 「Colophon 1」「Table of Contents 2」這種頁尾：字每頁不一樣，但數字每頁剛好加一，就是頁碼
+    const edgeNumber = line => {
+      const text = line.text.trim();
+      const match = text.length <= 80 && (/(?:^|\s)(\d{1,4})$/.exec(text) || /^(\d{1,4})(?:\s|$)/.exec(text));
+      return match ? Number(match[1]) : null;
+    };
+    const offsetCounts = new Map();
+    pages.forEach((lines, i) => {
+      new Set(edgesOf(lines).map(edgeNumber).filter(n => n != null).map(n => n - i)).forEach(offset => offsetCounts.set(offset, (offsetCounts.get(offset) || 0) + 1));
+    });
+    const pageOffsets = new Set([...offsetCounts].filter(([, n]) => pages.length >= 3 && n >= threshold).map(([offset]) => offset));
+
+    return pages.map((lines, pageIndex) => {
+      const edges = new Set(edgesOf(lines));
+      return lines.filter(line => {
+        if (!edges.has(line)) return true;
+        if (PAGE_NUMBER.test(line.text.trim())) return false;
+        const number = edgeNumber(line);
+        if (number != null && pageOffsets.has(number - pageIndex) && line.size <= bodySize * HEADING_RATIO) return false;
+        // 比內文大的是每頁開頭的標題（Chapter 1、Chapter 2…），不是頁首
+        if (pages.length < 2 || line.size > bodySize * HEADING_RATIO) return true;
+        if ((exactCounts.get(exactKey(line)) || 0) >= threshold) return false;
+        const text = line.text.trim();
+        return !(text.length <= 60 && /\d/.test(text) && (maskedCounts.get(maskedKey(line)) || 0) >= threshold && looksLikeEdge(line, lines));
+      });
+    });
+  };
+
+  /**
+   * 一頁的行 → 段落
+   * 新的一段：行距突然變大、字級變了（標題）、項目符號開頭、上一行是句尾又比較短
+   * @returns {{text: string, heading: boolean}[]}
+   */
+  const paragraphsFromLines = (lines, { bodySize } = {}) => {
+    if (!lines.length) return [];
+    const sizes = lines.map(line => line.size);
+    const typicalSize = bodySize || median(sizes);
+    const gaps = [];
+    for (let i = 1; i < lines.length; i++) {
+      const gap = lines[i - 1].y - lines[i].y;
+      if (gap > 0 && gap < typicalSize * 3) gaps.push(gap);
+    }
+    const lineGap = median(gaps) || typicalSize * 1.2;
+    const isHeading = line => line.size > typicalSize * HEADING_RATIO;
+    // 這一行所在的欄：跟它左右重疊的行（雙欄排版時，左欄只跟左欄比，不會被右欄或跨欄標題拉寬）
+    const quantile = (values, q) => {
+      const sorted = [...values].sort((a, b) => a - b);
+      return sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * q))];
+    };
+    const columnOf = line => {
+      const overlapping = lines.filter(other => other.x < line.right && other.right > line.x);
+      return { left: quantile(overlapping.map(o => o.x), 0.2), right: quantile(overlapping.map(o => o.right), 0.8) };
+    };
+
+    const paragraphs = [];
+    let current = null;
+    lines.forEach((line, i) => {
+      const prev = lines[i - 1];
+      let startNew = !current;
+      if (current && prev) {
+        const gap = prev.y - line.y;
+        const sizeChanged = Math.abs(line.size - prev.size) > typicalSize * 0.15;
+        const column = columnOf(prev);
+        const room = column.right - prev.right;
+        // 上一行是句尾又沒排滿；或是短到不像折行（項目符號是畫出來的、抓不到字的清單）。
+        // 下一行小寫開頭就是同一句話還沒講完（表格裡窄窄的儲存格會這樣折行），別切開
+        const shortSentenceEnd = SENTENCE_END.test(prev.text) && room > typicalSize * 2;
+        const muchShorter = room > (column.right - column.left) * 0.4 &&
+          /^[A-Z0-9"“‘(]/.test(line.text) && !/(?:[,;:\-–—]|\b(?:and|or|of|the|a|an|to|in|with|for))$/i.test(prev.text);
+        startNew = gap > lineGap * 1.4 || gap < -typicalSize || sizeChanged || BULLET.test(line.text) || shortSentenceEnd || muchShorter;
+        // 兩行的大標題：標題的行距本來就比內文大，用標題自己的字高來看
+        if (isHeading(prev) && isHeading(line) && !sizeChanged && gap > 0 && gap < line.size * 1.6 && !SENTENCE_END.test(prev.text)) startNew = false;
+      }
+      if (startNew) {
+        current = { text: line.text, heading: isHeading(line) };
+        paragraphs.push(current);
+      } else {
+        current.text = joinText(current.text, line.text);
+      }
+    });
+    return paragraphs;
+  };
+
+  /**
+   * 整份 PDF：每頁的 getTextContent() 項目 → 每頁的段落
+   * @param {Array<Array<Object>>} pagesItems
+   * @returns {Array<Array<{text: string, heading: boolean}>>}
+   */
+  const paragraphsFromPdfPages = pagesItems => {
+    const pages = removeRepeatedEdges(pagesItems.map(linesFromItems));
+    // 整份文件的內文字級，標題判斷才不會因為某一頁都是標題而失準
+    const bodySize = median(pages.flat().map(line => line.size));
+    return pages.map(lines => paragraphsFromLines(lines, { bodySize }));
+  };
+
+  /**
+   * TXT 檔 → 段落：空行分段；英文排版時自動折行的一段會接回來，詩、清單這種短行保留換行
+   * @returns {{text: string, heading: boolean}[]}
+   */
+  const paragraphsFromText = text => String(text || '')
+    .replace(/\r\n?/g, '\n')
+    .split(/\n[ \t　]*\n+/)
+    .map(block => {
+      const lines = block.split('\n').map(line => line.trim()).filter(Boolean);
+      if (lines.length <= 1) return lines.join('');
+      const average = lines.reduce((sum, line) => sum + line.length, 0) / lines.length;
+      const cjk = lines.some(line => CJK.test(line));
+      const wrapped = cjk ? average >= 25 : average >= 50;
+      return wrapped ? lines.reduce(joinText, '') : lines.join('\n');
+    })
+    .filter(paragraph => paragraph.trim())
+    .map(paragraph => ({ text: paragraph, heading: false }));
+
+  /**
+   * 文字檔的編碼：BOM → UTF-8 → 台灣、中國、日本、韓國常見的舊編碼，挑亂碼最少的
+   * @param {Uint8Array} bytes
+   */
+  const decodeText = bytes => {
+    if (bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf) return new TextDecoder('utf-8').decode(bytes.subarray(3));
+    if (bytes[0] === 0xff && bytes[1] === 0xfe) return new TextDecoder('utf-16le').decode(bytes.subarray(2));
+    if (bytes[0] === 0xfe && bytes[1] === 0xff) return new TextDecoder('utf-16be').decode(bytes.subarray(2));
+    try {
+      return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+    } catch (e) {
+      // 不是 UTF-8，換舊編碼試試
+    }
+    let best = null;
+    for (const label of ['big5', 'gb18030', 'shift_jis', 'euc-kr']) {
+      try {
+        const text = new TextDecoder(label).decode(bytes);
+        const broken = (text.match(/�/g) || []).length;
+        if (!best || broken < best.broken) best = { text, broken };
+      } catch (e) {
+        // 瀏覽器不支援這個編碼
+      }
+    }
+    return best ? best.text : new TextDecoder('utf-8').decode(bytes);
+  };
+
+  return { linesFromItems, removeRepeatedEdges, paragraphsFromLines, paragraphsFromPdfPages, paragraphsFromText, decodeText, joinText };
+})();
+
+globalThis.DocParse = DocParse;

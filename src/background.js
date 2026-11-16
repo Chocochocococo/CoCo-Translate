@@ -26,11 +26,37 @@ const storageGet = keys => new Promise(resolve => chrome.storage.local.get(keys,
 const storageSet = items => new Promise(resolve => chrome.storage.local.set(items, () => resolve()));
 const queryTabs = query => new Promise(resolve => chrome.tabs.query(query, tabs => resolve(tabs || [])));
 
+// 文件翻譯支援的檔案網址：PDF、Word、EPUB、TXT、字幕檔
+const DOCUMENT_URL_PATTERNS = ['pdf', 'PDF', 'docx', 'epub', 'txt', 'srt', 'vtt']
+  .flatMap(ext => [`*://*/*.${ext}`, `*://*/*.${ext}?*`, `file:///*.${ext}`])
+  .concat('*://arxiv.org/pdf/*');   // 論文的 PDF 網址沒有副檔名
+
 const MENU_ITEMS = [
   { id: "translate-selection", title: "Selection Translate", contexts: ["selection"] },
   { id: "clear-all-translations", title: "Clear Translations", contexts: ["all"] },
-  { id: "translate-page", title: "Page Translate", contexts: ["all"] }
+  { id: "translate-page", title: "Page Translate", contexts: ["all"] },
+  { id: "translate-document-link", title: "Translate This Document", contexts: ["link"], targetUrlPatterns: DOCUMENT_URL_PATTERNS },
+  { id: "translate-document-page", title: "Translate This Document", contexts: ["page", "frame"], documentUrlPatterns: DOCUMENT_URL_PATTERNS }
 ];
+
+// 擴充功能讀得到這個網址嗎？電腦裡的檔案（file://）Firefox 一律不准，Chrome 要使用者打開「允許存取檔案網址」
+const isFirefox = chrome.runtime.getURL('').startsWith('moz-extension:');
+const canReadUrl = url => new Promise(resolve => {
+  if (!/^file:/i.test(url)) return resolve(true);
+  if (isFirefox || !chrome.extension?.isAllowedFileSchemeAccess) return resolve(false);
+  chrome.extension.isAllowedFileSchemeAccess(allowed => resolve(!!allowed));
+});
+
+// 用文件翻譯頁打開。replace：讀得到的話直接在原本的分頁翻（上一頁就回到原本的 PDF）；
+// 讀不到的本機檔案開新分頁，原本的 PDF 留著（Chrome 打開檔案權限時會重新載入擴充功能，文件翻譯頁會被關掉）
+const openDocumentReader = async (url, tab, { replace = false } = {}) => {
+  const readerUrl = chrome.runtime.getURL(url ? `reader.html?file=${encodeURIComponent(url)}` : 'reader.html');
+  if (replace && url && tab?.id != null && await canReadUrl(url)) {
+    chrome.tabs.update(tab.id, { url: readerUrl });
+    return;
+  }
+  chrome.tabs.create({ url: readerUrl, ...(tab && tab.index != null ? { index: tab.index + 1 } : {}) });
+};
 
 // 先清空再建立，避免 onInstalled / onStartup 重複建立時噴 duplicate id
 function createContextMenus() {
@@ -169,6 +195,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       broadcastToTabs({ type: "TOGGLE_TRANSLATION", isEnabled: message.isEnabled });
       return;
 
+    case 'OPEN_DOCUMENT_READER':
+      openDocumentReader(message.url || '', message.tab, { replace: !!message.replace });
+      sendResponse({ ok: true });
+      return;
+
     case 'SET_TARGET_LANGUAGE':
       storageSet({ targetLanguage: message.language });
       broadcastToTabs({ type: "UPDATE_TARGET_LANGUAGE", targetLanguage: message.language });
@@ -214,6 +245,10 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
     broadcastToTabs({ type: "CLEAR_ALL_TRANSLATIONS" });
   } else if (info.menuItemId === "translate-page") {
     togglePageTranslation(tab);
+  } else if (info.menuItemId === "translate-document-link" && info.linkUrl) {
+    openDocumentReader(info.linkUrl, tab);
+  } else if (info.menuItemId === "translate-document-page") {
+    openDocumentReader(info.frameUrl || info.pageUrl || tab?.url, tab, { replace: !info.frameUrl });
   }
 });
 

@@ -8,8 +8,12 @@
 
 **官網與使用說明：https://chocochocococo.github.io/CoCo-Translate/**
 
-整頁雙語對照、滑鼠觸發翻譯、單字卡與生字本、YouTube 整句雙語字幕；
+整頁雙語對照、滑鼠觸發翻譯、單字卡與生字本、YouTube 整句雙語字幕、文件翻譯（PDF、Word、EPUB、TXT、字幕檔）；
 翻譯來源支援 Google、Bing、Google Cloud、DeepL，以及 Ollama、OpenRouter、Gemini 等 AI 翻譯。
+
+### 贊助
+
+CoCo 完全免費。覺得好用的話，可以到 [Ko-fi](https://ko-fi.com/chocochocococo) 或 [綠界](https://p.ecpay.com.tw/D6622EF)（台灣使用者）請作者喝杯熱可可。
 
 ### 關於
 
@@ -23,6 +27,7 @@ CoCo Translate is a browser extension for Chrome and Firefox that shows translat
 - **Hover translation**: hold a key (Right Ctrl by default) and point at a paragraph.
 - **Word lookup**: select a word to see its meanings by part of speech, English definitions and examples, then save it to your vocabulary list and export it to Anki.
 - **YouTube bilingual subtitles**: whole sentences instead of word-by-word captions, plus a transcript side panel.
+- **Documents**: open PDF, Word (.docx), EPUB, TXT or subtitle files (.srt, .vtt) and read them paragraph by paragraph with translations; PDFs show the original pages side by side. Export a bilingual text file, or bilingual / translated subtitles with the original timing. Scanned PDFs, .doc files and DRM-protected e-books aren't supported.
 - **Translation sources**: Google and Bing (no key needed), Google Cloud, DeepL, and AI translation through Ollama, OpenRouter, Gemini, Groq or any OpenAI-compatible API.
 - **Interface**: available in English and Traditional Chinese, with light and dark modes.
 
@@ -31,6 +36,8 @@ The website and user guide are in Traditional Chinese: https://chocochocococo.gi
 **Install**: the extension isn't in the browser stores yet.
 - Chrome: download the Chrome zip, unzip it, open `chrome://extensions`, turn on Developer mode, and choose "Load unpacked".
 - Firefox: download the xpi, open `about:addons`, click the gear icon, and choose "Install Add-on From File…".
+
+**Support**: CoCo is free. If you find it useful, you can buy the author a hot cocoa on [Ko-fi](https://ko-fi.com/chocochocococo).
 
 **About**: CoCo was vibe coded by someone who never studied programming. ChatGPT built the foundation (versions 1.0 to 1.4), and Claude (Claude Code) did the 1.5+ rewrite and the website. Bug reports are welcome in [Issues](https://github.com/Chocochocococo/CoCo-Translate/issues).
 
@@ -44,3 +51,4 @@ npm run bump        # 升版本號（-- patch / minor / major / 1.8.0.0）
 
 - 程式碼在 `src/`，兩個瀏覽器的 manifest 在 `manifests/`
 - 官網在 `docs/`（GitHub Pages）
+- `src/vendor/pdfjs/` 是 Mozilla 的 [pdf.js](https://github.com/mozilla/pdf.js)（Apache License 2.0），只有文件翻譯頁會載入

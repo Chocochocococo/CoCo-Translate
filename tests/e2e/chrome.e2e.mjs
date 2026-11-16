@@ -7,7 +7,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import assert from 'node:assert/strict';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const require = createRequire(import.meta.url);
 // 讓 context.route 也攔得到擴充功能 service worker 送出的請求（字典用假的資料）
@@ -19,6 +19,8 @@ const { chromium } = (() => {
     return require(path.join(process.env.NPM_GLOBAL || '', 'playwright'));
   }
 })();
+
+import { makeDocx, makeEpub } from '../helpers/zip.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const EXT_DIR = path.join(ROOT, 'dist', 'chrome');
@@ -80,7 +82,79 @@ const llmServer = http.createServer((req, res) => {
   });
 }).listen(0);
 
+// ---------- 文件翻譯用的小 PDF（每頁：頁首、標題、會換行的段落、項目符號、頁碼） ----------
+const makePdf = pages => {
+  const escape = text => text.replace(/[\\()]/g, '\\$&');
+  const objects = ['<< /Type /Catalog /Pages 2 0 R >>', null, '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>'];
+  const kids = [];
+  pages.forEach(lines => {
+    const stream = lines.map(([x, y, size, text]) => `BT /F1 ${size} Tf ${x} ${y} Td (${escape(text)}) Tj ET`).join('\n');
+    objects.push(`<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`);
+    objects.push(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents ${objects.length} 0 R >>`);
+    kids.push(`${objects.length} 0 R`);
+  });
+  objects[1] = `<< /Type /Pages /Kids [${kids.join(' ')}] /Count ${kids.length} >>`;
+  let out = '%PDF-1.4\n';
+  const offsets = objects.map((body, i) => {
+    const offset = out.length;
+    out += `${i + 1} 0 obj\n${body}\nendobj\n`;
+    return offset;
+  });
+  const xref = out.length;
+  out += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n${offsets.map(o => `${String(o).padStart(10, '0')} 00000 n \n`).join('')}`;
+  out += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`;
+  return Buffer.from(out, 'latin1');
+};
+const PDF = makePdf([1, 2, 3].map(n => [
+  [72, 750, 9, 'ACME Safety Manual'],
+  [72, 700, 18, `Chapter ${n}`],
+  [72, 670, 11, `Before using the machine, read every instruction in chapter ${n} care-`],
+  [72, 656, 11, 'fully and keep this manual near the device for future reference.'],
+  [72, 620, 11, '- Wear safety glasses.'],
+  [72, 604, 11, `- Unplug part ${n} before cleaning.`],
+  [300, 40, 9, String(n)]
+]));
+const TXT = 'Release notes\n\nThe reader now opens plain text files.\nShort lines stay as they are.\n\nSecond paragraph here.';
+
+const DOCX = makeDocx([
+  ['Quarterly Report', 'Title'],
+  ['Overview', '1'],
+  [['Sales grew by ', '12%', ' this quarter.']],
+  [['Line one', '\n', 'Line two']],
+  { table: [['Item', 'Cost'], ['Milk', '$5']] }
+], { headingStyleId: '1', headingStyleName: 'heading 1' });
+const EPUB_CHAPTERS = [
+  ['cover.xhtml', '<div><img src="cover.jpg" alt=""/></div>'],
+  ['ch1.xhtml', '<h1>Chapter One</h1><p>It was a <em>dark</em> and stormy night.</p><p><ruby>漢<rt>かん</rt></ruby>字</p><div><p>Nested</p> tail text</div>'],
+  ['ch2.xhtml', '<p>No heading here.</p><table><tr><th>Item</th><th><p>Cost</p></th></tr><tr><td>Milk</td><td>$5</td></tr></table>']
+];
+const EPUB = makeEpub(EPUB_CHAPTERS, { toc: { 'ch1.xhtml': 'Chapter One: The Night' } });
+const EPUB_DRM = makeEpub(EPUB_CHAPTERS, { encrypted: true });
+const SRT = '1\n00:00:01,000 --> 00:00:03,000\n<i>Hello there,</i>\nmy friend.\n\n2\n00:01:04,000 --> 00:01:05,000\nGoodbye.\n';
+const FILES = {
+  '/manual.pdf': ['application/pdf', () => PDF],
+  '/paper/1706.03762': ['application/pdf', () => PDF],   // 像 arXiv：網址沒有 .pdf
+  '/notes.txt': ['text/plain; charset=utf-8', () => TXT],
+  '/report.docx': ['application/vnd.openxmlformats-officedocument.wordprocessingml.document', () => DOCX],
+  '/novel.epub': ['application/epub+zip', () => EPUB],
+  '/locked.epub': ['application/epub+zip', () => EPUB_DRM],
+  '/movie.srt': ['application/x-subrip', () => SRT]
+};
+
 const pageServer = http.createServer((req, res) => {
+  const file = FILES[req.url.split('?')[0]];
+  if (file) {
+    res.writeHead(200, { 'Content-Type': file[0] });
+    return res.end(file[1]());
+  }
+  if (req.url.startsWith('/manual.pdf')) {
+    res.writeHead(200, { 'Content-Type': 'application/pdf' });
+    return res.end(PDF);
+  }
+  if (req.url.startsWith('/notes.txt')) {
+    res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
+    return res.end(TXT);
+  }
   res.writeHead(200, { 'Content-Type': 'text/html' });
   res.end(PAGE);
 }).listen(0);
@@ -1041,6 +1115,220 @@ try {
     assert.equal(isEnabled, false);
   });
   await popup.click('#toggleTranslation');
+
+  // 11. 文件翻譯：PDF
+  const reader = await context.newPage();
+  reader.on('pageerror', err => errors.push('reader pageerror: ' + err.message));
+  await reader.goto(`chrome-extension://${extId}/reader.html?file=${encodeURIComponent(origin + '/manual.pdf')}`);
+  await reader.waitForSelector('#textPane .para', { timeout: 10000 });
+  await check('文件翻譯：PDF 拆成段落，換行接回去、連字號拿掉', async () => {
+    const texts = await reader.$$eval('.page-block[data-page="1"] .para .orig', els => els.map(e => e.textContent));
+    assert.deepEqual(texts, [
+      'Chapter 1',
+      'Before using the machine, read every instruction in chapter 1 carefully and keep this manual near the device for future reference.',
+      '- Wear safety glasses.',
+      '- Unplug part 1 before cleaning.'
+    ]);
+    assert.ok(await reader.$('.page-block[data-page="1"] .para.heading'), '標題要有 heading');
+  });
+  await check('文件翻譯：每頁重複的頁首和頁碼不會出現', async () => {
+    const all = await reader.textContent('#textPane');
+    assert.ok(!all.includes('ACME Safety Manual'));
+    assert.equal(await reader.$$eval('.page-block', els => els.length), 3);
+  });
+  await check('文件翻譯：左邊畫出 PDF 頁面', async () => {
+    await reader.waitForSelector('.pdf-page[data-page="1"] canvas', { timeout: 10000 });
+    assert.equal(await reader.$$eval('.pdf-page', els => els.length), 3);
+  });
+  await check('文件翻譯：看得到的段落翻成譯文，狀態列有進度', async () => {
+    await reader.waitForFunction(() => document.querySelector('.page-block[data-page="1"] .para .trans')?.textContent.startsWith('[譯]'), null, { timeout: 8000 });
+    assert.equal(await reader.textContent('.page-block[data-page="1"] .para .trans'), '[譯]Chapter 1');
+    assert.match(await reader.textContent('#status'), /^3 頁 · 已翻譯 \d+／12 段$/);
+  });
+  await check('文件翻譯：匯出雙語文字檔（剩下的也會翻完）', async () => {
+    const [download] = await Promise.all([reader.waitForEvent('download', { timeout: 10000 }), reader.click('#exportBtn')]);
+    assert.equal(download.suggestedFilename(), 'manual.bilingual.txt');
+    const text = fs.readFileSync(await download.path(), 'utf8');
+    assert.ok(text.startsWith('── 第 1 頁 ──\n\nChapter 1\n[譯]Chapter 1\n'), text.slice(0, 80));
+    assert.ok(text.includes('── 第 3 頁 ──'));
+    assert.equal((text.match(/\[譯\]/g) || []).length, 12);
+  });
+  await check('文件翻譯：選字還是會出現查單字工具列（沒有翻譯、整頁按鈕）', async () => {
+    await reader.evaluate(() => {
+      const el = document.querySelector('.page-block[data-page="2"] .para .orig');
+      el.scrollIntoView();
+      const range = document.createRange();
+      range.setStart(el.firstChild, 0);
+      range.setEnd(el.firstChild, 7);
+      getSelection().removeAllRanges();
+      getSelection().addRange(range);
+    });
+    const box = await reader.evaluate(() => {
+      const r = getSelection().getRangeAt(0).getBoundingClientRect();
+      return { x: r.left + 5, y: r.top + r.height / 2 };
+    });
+    await reader.mouse.move(box.x, box.y);
+    await reader.mouse.up();
+    await reader.waitForSelector('#coco-selection-toolbar', { state: 'visible', timeout: 3000 });
+    const visible = await reader.$$eval('#coco-selection-toolbar button', bs => bs.filter(b => b.offsetParent).map(b => b.dataset.action || b.textContent));
+    assert.ok(visible.length > 0);
+    assert.ok(!(await reader.$$eval('#coco-selection-toolbar button', bs => bs.some(b => b.offsetParent && /🌐/.test(b.textContent)))), '文件翻譯頁不需要整頁翻譯按鈕');
+  });
+
+  // 文件翻譯：TXT
+  await reader.goto(`chrome-extension://${extId}/reader.html?file=${encodeURIComponent(origin + '/notes.txt')}`);
+  await reader.waitForSelector('#textPane .para', { timeout: 5000 });
+  await check('文件翻譯：TXT 用空行分段，短行保留換行，只有右邊一欄', async () => {
+    const texts = await reader.$$eval('.para .orig', els => els.map(e => e.textContent));
+    assert.deepEqual(texts, ['Release notes', 'The reader now opens plain text files.\nShort lines stay as they are.', 'Second paragraph here.']);
+    assert.ok(await reader.$('#pdfPane.hidden'));
+    assert.ok(await reader.$('#textPane.single'));
+    await reader.waitForFunction(() => [...document.querySelectorAll('.para .trans')].every(t => t.textContent.startsWith('[譯]')), null, { timeout: 5000 });
+  });
+  // Word
+  await reader.goto(`chrome-extension://${extId}/reader.html?file=${encodeURIComponent(origin + '/report.docx')}`);
+  await reader.waitForSelector('#textPane .para', { timeout: 5000 });
+  await check('文件翻譯：Word 的段落、標題（中文版 Word 的樣式 ID 也認得）、換行，表格一列一段', async () => {
+    const paras = await reader.$$eval('.para', els => els.map(e => [e.querySelector('.orig').textContent, e.classList.contains('heading')]));
+    assert.deepEqual(paras, [['Quarterly Report', true], ['Overview', true], ['Sales grew by 12% this quarter.', false], ['Line one\nLine two', false],
+      ['Item | Cost', false], ['Milk | $5', false]]);
+    await reader.waitForFunction(() => [...document.querySelectorAll('.para .trans')].every(t => t.textContent.startsWith('[譯]')), null, { timeout: 5000 });
+  });
+
+  // EPUB
+  await reader.goto(`chrome-extension://${extId}/reader.html?file=${encodeURIComponent(origin + '/novel.epub')}`);
+  await reader.waitForSelector('#textPane .para', { timeout: 5000 });
+  await check('文件翻譯：EPUB 照章節排、章名用目錄上的，略過封面，注音假名不會混進正文', async () => {
+    assert.deepEqual(await reader.$$eval('.page-label', els => els.map(e => e.textContent)), ['Chapter One: The Night', '第 2 節']);
+    assert.deepEqual(await reader.$$eval('.para .orig', els => els.map(e => e.textContent)),
+      ['Chapter One', 'It was a dark and stormy night.', '漢字', 'Nested', 'tail text', 'No heading here.', 'Item | Cost', 'Milk | $5']);
+  });
+  await check('文件翻譯：EPUB 匯出的雙語文字檔用章節名稱分隔', async () => {
+    const [download] = await Promise.all([reader.waitForEvent('download', { timeout: 10000 }), reader.click('#exportBtn')]);
+    assert.equal(download.suggestedFilename(), 'novel.bilingual.txt');
+    const text = fs.readFileSync(await download.path(), 'utf8');
+    assert.ok(text.startsWith('── Chapter One: The Night ──\n\nChapter One\n[譯]Chapter One\n'), text.slice(0, 80));
+    assert.ok(text.includes('── 第 2 節 ──\n\nNo heading here.\n[譯]No heading here.'));
+  });
+  await reader.goto(`chrome-extension://${extId}/reader.html?file=${encodeURIComponent(origin + '/locked.epub')}`);
+  await check('文件翻譯：有 DRM 的 EPUB 說明讀不到', async () => {
+    await reader.waitForSelector('#dropError:not(.hidden)', { timeout: 5000 });
+    assert.match(await reader.textContent('#dropError'), /DRM/);
+  });
+
+  // 字幕檔
+  await reader.goto(`chrome-extension://${extId}/reader.html?file=${encodeURIComponent(origin + '/movie.srt')}`);
+  await reader.waitForSelector('#textPane .para', { timeout: 5000 });
+  await check('文件翻譯：字幕檔每句一段，前面標時間', async () => {
+    const paras = await reader.$$eval('.para', els => els.map(e => [e.querySelector('.meta').textContent, e.querySelector('.orig').textContent]));
+    assert.deepEqual(paras, [['0:01', 'Hello there, my friend.'], ['1:04', 'Goodbye.']]);
+    assert.equal(await reader.textContent('#exportBtn'), '匯出雙語字幕');
+    assert.ok(await reader.isVisible('#exportAltBtn'));
+  });
+  await check('文件翻譯：匯出雙語字幕、譯文字幕（時間軸不變，原本的標記保留）', async () => {
+    const [bilingual] = await Promise.all([reader.waitForEvent('download', { timeout: 10000 }), reader.click('#exportBtn')]);
+    assert.equal(bilingual.suggestedFilename(), 'movie.bilingual.srt');
+    assert.equal(fs.readFileSync(await bilingual.path(), 'utf8'),
+      '1\n00:00:01,000 --> 00:00:03,000\n<i>Hello there,</i>\nmy friend.\n[譯]Hello there, my friend.\n\n2\n00:01:04,000 --> 00:01:05,000\nGoodbye.\n[譯]Goodbye.\n');
+    const [translated] = await Promise.all([reader.waitForEvent('download', { timeout: 10000 }), reader.click('#exportAltBtn')]);
+    assert.match(translated.suggestedFilename(), /^movie\.[\w-]+\.srt$/);
+    assert.equal(fs.readFileSync(await translated.path(), 'utf8'),
+      '1\n00:00:01,000 --> 00:00:03,000\n[譯]Hello there, my friend.\n\n2\n00:01:04,000 --> 00:01:05,000\n[譯]Goodbye.\n');
+  });
+
+  await check('文件翻譯：不支援的檔案顯示說明', async () => {
+    await reader.setInputFiles('#fileInput', { name: 'photo.png', mimeType: 'image/png', buffer: Buffer.from([0x89, 0x50, 0x4e, 0x47]) });
+    await reader.waitForSelector('#dropError:not(.hidden)', { timeout: 3000 });
+    assert.ok(!(await reader.$('#dropZone.hidden')));
+  });
+  await check('文件翻譯：從檔案選擇器打開 PDF', async () => {
+    await reader.setInputFiles('#fileInput', { name: 'local.pdf', mimeType: 'application/pdf', buffer: PDF });
+    await reader.waitForSelector('.page-block[data-page="3"]', { timeout: 10000 });
+    assert.equal(await reader.textContent('#docName'), 'local.pdf');
+    assert.ok(await reader.$('#dropZone.hidden'));
+    assert.equal(await reader.textContent('#exportBtn'), '匯出雙語文字檔');
+    assert.ok(!(await reader.isVisible('#exportAltBtn')));
+  });
+
+  // 電腦裡的檔案（file://）。用命令列載入的擴充功能預設就有「允許存取檔案網址」
+  const localPdf = path.join(userDataDir, 'local manual.pdf');
+  fs.writeFileSync(localPdf, PDF);
+  const localPdfUrl = pathToFileURL(localPdf).href;
+  await check('文件翻譯：有檔案權限時，電腦裡的 PDF 直接打開', async () => {
+    await reader.goto(`chrome-extension://${extId}/reader.html?file=${encodeURIComponent(localPdfUrl)}`);
+    await reader.waitForSelector('.page-block[data-page="3"]', { timeout: 10000 });
+    assert.equal(await reader.textContent('#docName'), 'local manual.pdf');
+  });
+  const denyFileAccess = () => Object.defineProperty(chrome.extension, 'isAllowedFileSchemeAccess', { value: cb => cb(false), configurable: true });
+  const noAccessReader = await context.newPage();
+  noAccessReader.on('pageerror', err => errors.push('reader pageerror: ' + err.message));
+  await noAccessReader.addInitScript(denyFileAccess);
+  await noAccessReader.goto(`chrome-extension://${extId}/reader.html?file=${encodeURIComponent(localPdfUrl)}`);
+  await check('文件翻譯：沒有檔案權限時，說要選哪個檔案，並提供打開權限的按鈕', async () => {
+    await noAccessReader.waitForSelector('#localFileHelp:not(.hidden)', { timeout: 5000 });
+    assert.match(await noAccessReader.textContent('#localFileText'), /「local manual\.pdf」/);
+    assert.ok(await noAccessReader.isVisible('#allowFilesBtn'));
+    const [settingsTab] = await Promise.all([context.waitForEvent('page', { timeout: 5000 }), noAccessReader.click('#allowFilesBtn')]);
+    assert.equal(settingsTab.url(), `chrome://extensions/?id=${extId}`);
+    assert.ok(await noAccessReader.isVisible('#allowFilesSteps'));
+    await settingsTab.close();
+  });
+  await check('文件翻譯：沒有檔案權限時，選一次檔案就能翻', async () => {
+    const [chooser] = await Promise.all([noAccessReader.waitForEvent('filechooser', { timeout: 5000 }), noAccessReader.click('#pickLocalBtn')]);
+    await chooser.setFiles(localPdf);
+    await noAccessReader.waitForSelector('.page-block[data-page="3"]', { timeout: 10000 });
+    assert.ok(!(await noAccessReader.isVisible('#localFileHelp')));
+  });
+  await noAccessReader.close();
+
+  // popup：目前分頁是 PDF 時，大按鈕改成「翻譯這份文件」
+  const docTab = await context.newPage();
+  await docTab.goto(origin + '/?doc');
+  const docTabId = await sw.evaluate(async () => (await chrome.tabs.query({})).find(t => t.url.endsWith('/?doc')).id);
+  const openPopupFor = async url => {
+    const popupPage = await context.newPage();
+    popupPage.on('pageerror', err => errors.push('pdf popup pageerror: ' + err.message));
+    await popupPage.addInitScript(([id, u]) => {
+      chrome.tabs.query = (q, cb) => cb([{ id, url: u, index: 1 }]);
+    }, [docTabId, url]);
+    await popupPage.goto(`chrome-extension://${extId}/popup.html`);
+    await popupPage.waitForTimeout(400);
+    return popupPage;
+  };
+  const pdfPopup = await openPopupFor(origin + '/manual.pdf');
+  await check('popup：PDF 分頁的大按鈕直接在原本的分頁翻譯', async () => {
+    assert.equal(await pdfPopup.textContent('#pageToggleLabel'), '翻譯這份文件');
+    await pdfPopup.click('#pageToggleBtn');
+    await docTab.waitForURL(`chrome-extension://${extId}/reader.html?file=${encodeURIComponent(origin + '/manual.pdf')}`, { timeout: 5000 });
+  });
+  const paperTab = await context.newPage();
+  await paperTab.goto(origin + '/paper/1706.03762').catch(() => {});
+  await paperTab.waitForTimeout(800);
+  const paperTabInfo = await sw.evaluate(async u => (await chrome.tabs.query({})).find(t => t.url === u), origin + '/paper/1706.03762');
+  const paperPopup = await context.newPage();
+  paperPopup.on('pageerror', err => errors.push('paper popup pageerror: ' + err.message));
+  await paperPopup.addInitScript(t => { chrome.tabs.query = (q, cb) => cb([t]); }, { id: paperTabInfo.id, url: paperTabInfo.url, index: paperTabInfo.index });
+  await paperPopup.goto(`chrome-extension://${extId}/popup.html`);
+  await check('popup：網址沒有 .pdf 的 PDF（像 arXiv）也認得出來', async () => {
+    await paperPopup.waitForFunction(() => document.querySelector('#pageToggleLabel').textContent === '翻譯這份文件', null, { timeout: 5000 });
+  });
+  await paperPopup.close();
+  await paperTab.close();
+  await check('文件翻譯：匯出檔名只拿掉認得的副檔名（1706.03762 不會變成 1706）', async () => {
+    await reader.goto(`chrome-extension://${extId}/reader.html?file=${encodeURIComponent(origin + '/paper/1706.03762')}`);
+    await reader.waitForSelector('#textPane .para', { timeout: 10000 });
+    const [download] = await Promise.all([reader.waitForEvent('download', { timeout: 15000 }), reader.click('#exportBtn')]);
+    assert.equal(download.suggestedFilename(), '1706.03762.bilingual.txt');
+  });
+  await sw.evaluate(denyFileAccess);
+  const localPopup = await openPopupFor(localPdfUrl);
+  await check('popup：讀不到的本機 PDF 開新分頁，原本的 PDF 留著', async () => {
+    const [opened] = await Promise.all([context.waitForEvent('page', { timeout: 5000 }), localPopup.click('#pageToggleBtn')]);
+    await opened.waitForLoadState();
+    assert.equal(opened.url(), `chrome-extension://${extId}/reader.html?file=${encodeURIComponent(localPdfUrl)}`);
+    await opened.close();
+  });
+  await sw.evaluate(() => delete chrome.extension.isAllowedFileSchemeAccess);
 
   await check('沒有任何頁面錯誤', async () => {
     assert.deepEqual(errors, []);

@@ -3,6 +3,7 @@
 
 let activeTab = null;
 let pageSupported = false;
+let documentUrl = '';   // 目前分頁是 PDF／TXT：大按鈕改成用文件翻譯頁打開
 let pageTranslated = false;
 let pageShortcut = '';
 let triggerKey = 'ControlRight';
@@ -12,6 +13,13 @@ const $ = id => document.getElementById(id);
 // ---------------- 會跟著語言變的文字 ----------------
 function renderPageButton() {
   const button = $('pageToggleBtn');
+  if (documentUrl) {
+    button.disabled = false;
+    button.classList.remove('translated');
+    $('pageToggleLabel').textContent = i18n('openDocument');
+    $('pageShortcut').textContent = '';
+    return;
+  }
   button.disabled = !pageSupported;
   button.classList.toggle('translated', pageSupported && pageTranslated);
   $('pageToggleLabel').textContent = !pageSupported
@@ -58,16 +66,41 @@ function initActiveTab() {
     }
     // chrome:// 、about: 這類頁面跑不了 content script
     pageSupported = !!url && /^https?:$/.test(url.protocol);
+    // 瀏覽器內建的 PDF 閱讀器裡跑不了 content script，改用 CoCo 的文件翻譯頁
+    documentUrl = url && /^(https?|file):$/.test(url.protocol) && /\.(pdf|docx|epub|txt|srt|vtt)$/i.test(url.pathname) ? url.href : '';
     $('siteHost').textContent = pageSupported ? url.hostname : '';
     $('alwaysTranslateHost').textContent = pageSupported ? url.hostname : '';
     renderPageButton();
     initAlwaysTranslate(url);
     if (!pageSupported) return;
+    if (!documentUrl) detectDocument(url);
     chrome.runtime.sendMessage({ type: 'GET_PAGE_STATUS', tabId: activeTab.id }, response => {
       if (chrome.runtime.lastError || !response) return;
       pageTranslated = !!response.isTranslated;
       renderPageButton();
     });
+  });
+}
+
+// 網址沒有 .pdf 的 PDF（例如 arxiv.org/pdf/1706.03762）：先問分頁裡的 CoCo 這頁是什麼；
+// 沒人回答（瀏覽器內建的 PDF 閱讀器常常不讓擴充功能進去）就問伺服器
+const DOCUMENT_TYPES = /^(application\/pdf|application\/epub\+zip|application\/vnd\.openxmlformats-officedocument\.wordprocessingml\.document)\b/i;
+function detectDocument(url) {
+  const markDocument = () => {
+    documentUrl = url.href;
+    renderPageButton();
+  };
+  chrome.tabs.sendMessage(activeTab.id, { type: 'COCO_PING' }, async response => {
+    if (!chrome.runtime.lastError && response) {
+      if (DOCUMENT_TYPES.test(response.contentType || '')) markDocument();
+      return;
+    }
+    try {
+      const head = await fetch(url.href, { method: 'HEAD', credentials: 'include' });
+      if (DOCUMENT_TYPES.test(head.headers.get('content-type') || '')) markDocument();
+    } catch (e) {
+      // 問不到就算了，照一般網頁處理
+    }
   });
 }
 
@@ -78,6 +111,10 @@ function sendPageCommand(type) {
 
 function initPageButton() {
   $('pageToggleBtn').addEventListener('click', () => {
+    if (documentUrl) {
+      openDocumentReader(documentUrl, { replace: true });
+      return;
+    }
     if (!pageSupported || !activeTab) return;
     sendPageCommand(pageTranslated ? 'RESTORE_PAGE' : 'TRANSLATE_PAGE');
     pageTranslated = !pageTranslated;
@@ -179,11 +216,21 @@ function initSettings() {
   bindSwitch('youTubeTranscriptPanel', 'youTubeTranscriptPanel', { defaultValue: true });
 }
 
+// 交給 background 開：讀得到的文件直接在目前分頁翻，讀不到的本機檔案才開新分頁
+function openDocumentReader(url = '', { replace = false } = {}) {
+  const tab = activeTab ? { id: activeTab.id, index: activeTab.index } : null;
+  chrome.runtime.sendMessage({ type: 'OPEN_DOCUMENT_READER', url, tab, replace }, () => {
+    void chrome.runtime.lastError;
+    window.close();
+  });
+}
+
 function initLinks() {
   $('openOptionsBtn').addEventListener('click', () => openOptionsPage());
   $('openGlossaryBtn').addEventListener('click', () => openOptionsPage('glossary'));
   $('openVocabularyBtn').addEventListener('click', () => openOptionsPage('vocabulary'));
   $('manageSitesBtn').addEventListener('click', () => openOptionsPage('sites'));
+  $('openReaderBtn').addEventListener('click', () => openDocumentReader());
   $('clearBtn').addEventListener('click', () => {
     chrome.tabs.query({}, tabs => tabs.forEach(tab =>
       chrome.tabs.sendMessage(tab.id, { type: 'CLEAR_ALL_TRANSLATIONS' }, () => void chrome.runtime.lastError)));

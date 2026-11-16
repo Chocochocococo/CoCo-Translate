@@ -43,20 +43,25 @@ const DocParse = (() => {
     const lines = [];
     let current = null;
     const push = () => {
-      if (current && current.text.trim()) lines.push({ ...current, text: current.text.replace(/\s+/g, ' ').trim() });
+      // 目錄的引導點「. . . . . . 12」縮成「…」，別把一整排點送去翻譯
+      if (current && current.text.trim()) lines.push({ ...current, text: current.text.replace(/\s+/g, ' ').replace(/(?:\s*\.){5,}\s*/g, ' … ').trim() });
       current = null;
     };
     for (const item of items || []) {
       const [, , c, d, x, y] = item.transform || [0, 0, 0, 0, 0, 0];
       const size = Math.abs(d) || Math.hypot(c, d) || item.height || 10;
-      // 換行：y 座標差超過半個字高（PDF 的 y 往上增加）
-      if (current && Math.abs(y - current.y) > Math.min(size, current.size) * 0.5) push();
+      // 換行：y 座標差超過半個字高（PDF 的 y 往上增加）。
+      // 比這行小很多、又沒離開這行高度的字是上標、下標（作者旁邊的 ∗、註腳編號），接在同一行
+      const dy = current ? Math.abs(y - current.y) : 0;
+      const isScript = current && size < current.size * 0.85 && dy < current.size * 0.7;
+      if (current && !isScript && dy > Math.min(size, current.size) * 0.5) push();
       const str = item.str || '';
       if (str) {
         if (!current) current = { text: '', x, y, right: x, size };
         const gap = x - current.right;
+        const ref = Math.max(size, current.size);   // 上標字小，空隙要跟這行的字比
         const needsSpace = current.text && !/\s$/.test(current.text) && !/^\s/.test(str) &&
-          (isCJK(current.text.slice(-1)) && isCJK(str.charAt(0)) ? gap > size * 0.8 : gap > size * 0.15);
+          (isCJK(current.text.slice(-1)) && isCJK(str.charAt(0)) ? gap > ref * 0.8 : gap > ref * 0.15);
         current.text += (needsSpace ? ' ' : '') + str;
         current.right = Math.max(current.right, x + (item.width || 0));
         current.size = Math.max(current.size, size);
@@ -95,11 +100,25 @@ const DocParse = (() => {
       const inner = i < lines.length / 2 ? lines[i + 1] : lines[i - 1];
       return !inner || Math.abs(inner.y - line.y) > Math.max(line.size, inner.size) * 2;
     };
-    return pages.map(lines => {
+    // 「Colophon 1」「Table of Contents 2」這種頁尾：字每頁不一樣，但數字每頁剛好加一，就是頁碼
+    const edgeNumber = line => {
+      const text = line.text.trim();
+      const match = text.length <= 80 && (/(?:^|\s)(\d{1,4})$/.exec(text) || /^(\d{1,4})(?:\s|$)/.exec(text));
+      return match ? Number(match[1]) : null;
+    };
+    const offsetCounts = new Map();
+    pages.forEach((lines, i) => {
+      new Set(edgesOf(lines).map(edgeNumber).filter(n => n != null).map(n => n - i)).forEach(offset => offsetCounts.set(offset, (offsetCounts.get(offset) || 0) + 1));
+    });
+    const pageOffsets = new Set([...offsetCounts].filter(([, n]) => pages.length >= 3 && n >= threshold).map(([offset]) => offset));
+
+    return pages.map((lines, pageIndex) => {
       const edges = new Set(edgesOf(lines));
       return lines.filter(line => {
         if (!edges.has(line)) return true;
         if (PAGE_NUMBER.test(line.text.trim())) return false;
+        const number = edgeNumber(line);
+        if (number != null && pageOffsets.has(number - pageIndex) && line.size <= bodySize * HEADING_RATIO) return false;
         // 比內文大的是每頁開頭的標題（Chapter 1、Chapter 2…），不是頁首
         if (pages.length < 2 || line.size > bodySize * HEADING_RATIO) return true;
         if ((exactCounts.get(exactKey(line)) || 0) >= threshold) return false;
@@ -151,6 +170,8 @@ const DocParse = (() => {
         const muchShorter = room > (column.right - column.left) * 0.4 &&
           /^[A-Z0-9"“‘(]/.test(line.text) && !/(?:[,;:\-–—]|\b(?:and|or|of|the|a|an|to|in|with|for))$/i.test(prev.text);
         startNew = gap > lineGap * 1.4 || gap < -typicalSize || sizeChanged || BULLET.test(line.text) || shortSentenceEnd || muchShorter;
+        // 兩行的大標題：標題的行距本來就比內文大，用標題自己的字高來看
+        if (isHeading(prev) && isHeading(line) && !sizeChanged && gap > 0 && gap < line.size * 1.6 && !SENTENCE_END.test(prev.text)) startNew = false;
       }
       if (startNew) {
         current = { text: line.text, heading: isHeading(line) };

@@ -447,7 +447,8 @@ const translateEverything = async () => {
   return id === loadId;
 };
 
-const baseName = () => documentName.replace(/\.[^.]+$/, '') || 'document';
+// 只拿掉認得的副檔名：arXiv 的「1706.03762」不能變成「1706」
+const baseName = () => documentName.replace(/\.(pdf|docx|epub|txt|text|md|markdown|log|srt|vtt)$/i, '') || 'document';
 
 // 原文、譯文、空行；PDF 每頁、EPUB 每章前面加個分隔
 const exportBilingualText = async () => {

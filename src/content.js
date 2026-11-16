@@ -1051,8 +1051,12 @@ const stopAutoTranslationObserver = () => {
 };
 
 // Message listener
-chrome.runtime.onMessage.addListener(message => {
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   switch (message.type) {
+    // popup 問「這頁是什麼」：瀏覽器內建的 PDF 閱讀器裡就算有 CoCo，也翻不了，要改用文件翻譯
+    case "COCO_PING":
+      sendResponse({ contentType: document.contentType || '' });
+      break;
     case "TOGGLE_TRANSLATION":
       isEnabled = message.isEnabled;
       if (!isEnabled) removeAllTranslations();

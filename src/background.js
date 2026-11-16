@@ -28,7 +28,8 @@ const queryTabs = query => new Promise(resolve => chrome.tabs.query(query, tabs 
 
 // 文件翻譯支援的檔案網址：PDF、Word、EPUB、TXT、字幕檔
 const DOCUMENT_URL_PATTERNS = ['pdf', 'PDF', 'docx', 'epub', 'txt', 'srt', 'vtt']
-  .flatMap(ext => [`*://*/*.${ext}`, `*://*/*.${ext}?*`, `file:///*.${ext}`]);
+  .flatMap(ext => [`*://*/*.${ext}`, `*://*/*.${ext}?*`, `file:///*.${ext}`])
+  .concat('*://arxiv.org/pdf/*');   // 論文的 PDF 網址沒有副檔名
 
 const MENU_ITEMS = [
   { id: "translate-selection", title: "Selection Translate", contexts: ["selection"] },

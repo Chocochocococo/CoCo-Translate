@@ -133,6 +133,7 @@ const EPUB_DRM = makeEpub(EPUB_CHAPTERS, { encrypted: true });
 const SRT = '1\n00:00:01,000 --> 00:00:03,000\n<i>Hello there,</i>\nmy friend.\n\n2\n00:01:04,000 --> 00:01:05,000\nGoodbye.\n';
 const FILES = {
   '/manual.pdf': ['application/pdf', () => PDF],
+  '/paper/1706.03762': ['application/pdf', () => PDF],   // 像 arXiv：網址沒有 .pdf
   '/notes.txt': ['text/plain; charset=utf-8', () => TXT],
   '/report.docx': ['application/vnd.openxmlformats-officedocument.wordprocessingml.document', () => DOCX],
   '/novel.epub': ['application/epub+zip', () => EPUB],
@@ -1299,6 +1300,25 @@ try {
     assert.equal(await pdfPopup.textContent('#pageToggleLabel'), '翻譯這份文件');
     await pdfPopup.click('#pageToggleBtn');
     await docTab.waitForURL(`chrome-extension://${extId}/reader.html?file=${encodeURIComponent(origin + '/manual.pdf')}`, { timeout: 5000 });
+  });
+  const paperTab = await context.newPage();
+  await paperTab.goto(origin + '/paper/1706.03762').catch(() => {});
+  await paperTab.waitForTimeout(800);
+  const paperTabInfo = await sw.evaluate(async u => (await chrome.tabs.query({})).find(t => t.url === u), origin + '/paper/1706.03762');
+  const paperPopup = await context.newPage();
+  paperPopup.on('pageerror', err => errors.push('paper popup pageerror: ' + err.message));
+  await paperPopup.addInitScript(t => { chrome.tabs.query = (q, cb) => cb([t]); }, { id: paperTabInfo.id, url: paperTabInfo.url, index: paperTabInfo.index });
+  await paperPopup.goto(`chrome-extension://${extId}/popup.html`);
+  await check('popup：網址沒有 .pdf 的 PDF（像 arXiv）也認得出來', async () => {
+    await paperPopup.waitForFunction(() => document.querySelector('#pageToggleLabel').textContent === '翻譯這份文件', null, { timeout: 5000 });
+  });
+  await paperPopup.close();
+  await paperTab.close();
+  await check('文件翻譯：匯出檔名只拿掉認得的副檔名（1706.03762 不會變成 1706）', async () => {
+    await reader.goto(`chrome-extension://${extId}/reader.html?file=${encodeURIComponent(origin + '/paper/1706.03762')}`);
+    await reader.waitForSelector('#textPane .para', { timeout: 10000 });
+    const [download] = await Promise.all([reader.waitForEvent('download', { timeout: 15000 }), reader.click('#exportBtn')]);
+    assert.equal(download.suggestedFilename(), '1706.03762.bilingual.txt');
   });
   await sw.evaluate(denyFileAccess);
   const localPopup = await openPopupFor(localPdfUrl);

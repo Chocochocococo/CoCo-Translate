@@ -73,11 +73,34 @@ function initActiveTab() {
     renderPageButton();
     initAlwaysTranslate(url);
     if (!pageSupported) return;
+    if (!documentUrl) detectDocument(url);
     chrome.runtime.sendMessage({ type: 'GET_PAGE_STATUS', tabId: activeTab.id }, response => {
       if (chrome.runtime.lastError || !response) return;
       pageTranslated = !!response.isTranslated;
       renderPageButton();
     });
+  });
+}
+
+// 網址沒有 .pdf 的 PDF（例如 arxiv.org/pdf/1706.03762）：先問分頁裡的 CoCo 這頁是什麼；
+// 沒人回答（瀏覽器內建的 PDF 閱讀器常常不讓擴充功能進去）就問伺服器
+const DOCUMENT_TYPES = /^(application\/pdf|application\/epub\+zip|application\/vnd\.openxmlformats-officedocument\.wordprocessingml\.document)\b/i;
+function detectDocument(url) {
+  const markDocument = () => {
+    documentUrl = url.href;
+    renderPageButton();
+  };
+  chrome.tabs.sendMessage(activeTab.id, { type: 'COCO_PING' }, async response => {
+    if (!chrome.runtime.lastError && response) {
+      if (DOCUMENT_TYPES.test(response.contentType || '')) markDocument();
+      return;
+    }
+    try {
+      const head = await fetch(url.href, { method: 'HEAD', credentials: 'include' });
+      if (DOCUMENT_TYPES.test(head.headers.get('content-type') || '')) markDocument();
+    } catch (e) {
+      // 問不到就算了，照一般網頁處理
+    }
   });
 }
 

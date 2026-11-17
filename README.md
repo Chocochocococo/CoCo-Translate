@@ -8,6 +8,8 @@
 
 **官網與使用說明：https://chocochocococo.github.io/CoCo-Translate/**
 
+隱私權政策：https://chocochocococo.github.io/CoCo-Translate/privacy.html
+
 整頁雙語對照、滑鼠觸發翻譯、單字卡與生字本、YouTube 整句雙語字幕、文件翻譯（PDF、Word、EPUB、TXT、字幕檔）；
 翻譯來源支援 Google、Bing、Google Cloud、DeepL，以及 Ollama、OpenRouter、Gemini 等 AI 翻譯。
 
@@ -32,6 +34,8 @@ CoCo Translate is a browser extension for Chrome and Firefox that shows translat
 - **Interface**: available in English and Traditional Chinese, with light and dark modes.
 
 The website and user guide are in Traditional Chinese: https://chocochocococo.github.io/CoCo-Translate/
+
+Privacy policy: https://chocochocococo.github.io/CoCo-Translate/privacy.html
 
 **Install**: the extension isn't in the browser stores yet. Download the latest version from [Releases](https://github.com/Chocochocococo/CoCo-Translate/releases/latest).
 - Chrome: download the Chrome zip, unzip it, open `chrome://extensions`, turn on Developer mode, and choose "Load unpacked".

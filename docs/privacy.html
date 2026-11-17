@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>隱私權政策 Privacy Policy｜CoCo Translate</title>
+<meta name="description" content="CoCo Translate（可可翻譯）的隱私權政策：不收集、不販售任何個人資料，翻譯的文字只會送到你自己選的翻譯服務。">
+<link rel="canonical" href="https://chocochocococo.github.io/CoCo-Translate/privacy.html">
+<link rel="icon" type="image/png" href="img/logo.png">
+<meta name="theme-color" content="#f4f7ef" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#141816" media="(prefers-color-scheme: dark)">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=LXGW+WenKai+TC:wght@400;700&family=Noto+Sans+TC:wght@400;500;700&display=swap">
+<style>
+  /* 顏色、字體跟首頁（index.html）一樣 */
+  html { -webkit-text-size-adjust: 100%; }
+  :root {
+    --paper: #f4f7ef;
+    --surface: #ffffff;
+    --line: #dde6d3;
+    --ink: #26311f;
+    --muted: #66745e;
+    --leaf: #3f9a5e;
+    --display: "LXGW WenKai TC", "Kaiti TC", "BiauKai", "STKaiti", serif;
+    --body: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", system-ui, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper: #141816;
+      --surface: #1d2320;
+      --line: #313a35;
+      --ink: #e4ebe6;
+      --muted: #97a59c;
+      --leaf: #63cf95;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper: #141816;
+    --surface: #1d2320;
+    --line: #313a35;
+    --ink: #e4ebe6;
+    --muted: #97a59c;
+    --leaf: #63cf95;
+    color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font: 16px/1.8 var(--body);
+    padding-inline: 20px;
+  }
+  a { color: var(--leaf); text-underline-offset: 3px; overflow-wrap: anywhere; }
+  a:focus-visible { outline: 2px solid var(--leaf); outline-offset: 3px; border-radius: 4px; }
+  h1, h2, h3 { font-family: var(--display); font-weight: 700; text-wrap: balance; line-height: 1.3; margin: 0; }
+  .wrap { max-width: 760px; margin-inline: auto; }
+
+  .nav {
+    position: sticky;
+    top: env(safe-area-inset-top, 0px);
+    z-index: 5;
+    margin-inline: -20px;
+    padding: 10px 20px;
+    background: color-mix(in srgb, var(--paper) 88%, transparent);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--line);
+  }
+  .nav .wrap { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
+  .brand { display: flex; align-items: center; gap: 10px; font-family: var(--display); font-weight: 700; font-size: 19px; color: var(--ink); text-decoration: none; margin-right: auto; }
+  .brand img { width: 30px; height: 30px; }
+  .nav nav { display: flex; gap: 18px; font-size: 15px; }
+  .nav nav a { color: var(--muted); text-decoration: none; }
+  .nav nav a:hover { color: var(--leaf); }
+
+  main { padding-block: 48px 64px; }
+  .policy { scroll-margin-top: 72px; }   /* 跳到 #en 時別被上面的導覽列蓋住 */
+  .policy + .policy { margin-top: 56px; padding-top: 48px; border-top: 1px solid var(--line); }
+  .policy h1 { font-size: 32px; }
+  .updated { margin: 6px 0 0; color: var(--muted); font-size: 14px; }
+  .lead { margin: 20px 0 0; padding: 16px 20px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; }
+  .policy h2 { margin-top: 32px; font-size: 21px; }
+  .policy p { margin: 10px 0 0; }
+  .policy ul { margin: 10px 0 0; padding-left: 1.3em; }
+  .policy li + li { margin-top: 4px; }
+
+  footer { padding-block: 32px 48px; border-top: 1px solid var(--line); color: var(--muted); font-size: 14px; }
+  footer .wrap { display: flex; gap: 12px 28px; flex-wrap: wrap; }
+</style>
+</head>
+<body>
+
+<header class="nav">
+  <div class="wrap">
+    <a class="brand" href="./"><img src="img/logo.png" alt="">CoCo Translate</a>
+    <nav aria-label="語言 Language">
+      <a href="#zh">中文</a>
+      <a href="#en">English</a>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap">
+  <!-- 兩個語言的內容要一致；改其中一邊時，另一邊也要一起改 -->
+  <article id="zh" class="policy" lang="zh-Hant">
+    <h1>隱私權政策</h1>
+    <p class="updated">最後更新：2026 年 11 月 17 日</p>
+    <p class="lead">CoCo Translate 不收集、不販售、也不分享任何個人資料。開發者沒有架設任何伺服器，不會收到擴充功能的任何資料；沒有分析、廣告或追蹤。</p>
+
+    <h2>一、送去翻譯的文字</h2>
+    <p>翻譯時，CoCo 會把你要翻譯的文字（網頁段落、選取的文字、YouTube 字幕或文件內容），從你的瀏覽器直接送到你在設定裡選的翻譯服務：</p>
+    <ul>
+      <li>Google 翻譯（預設，免金鑰）</li>
+      <li>Microsoft Bing 翻譯（免金鑰）</li>
+      <li>Google Cloud Translation 或 DeepL（使用你自己的 API 金鑰）</li>
+      <li>你自己設定的 AI 服務，例如 Ollama（你的電腦或 ollama.com）、OpenRouter、Google Gemini、Groq、Mistral，或你輸入的任何 OpenAI 相容網址（使用你自己的 API 金鑰）</li>
+    </ul>
+    <p>在單字卡查詢的英文單字，會送到 Free Dictionary API（dictionaryapi.dev）。</p>
+    <p>這些服務依各自的隱私權政策處理資料。機密內容建議改用本機 AI 模型（例如你電腦上的 Ollama），文字就不會離開你的裝置。</p>
+
+    <h2>二、網頁與檔案</h2>
+    <p>YouTube 字幕從 YouTube 下載；用網址打開的文件從該網址下載。從你電腦打開的檔案只在瀏覽器裡讀取，不會上傳；只有文字會依上述方式送去翻譯。</p>
+
+    <h2>三、存在你裝置上的資料</h2>
+    <p>你的設定、API 金鑰、術語表、網站清單和生字本，都存在瀏覽器的擴充功能儲存空間裡，不會同步或傳送到任何地方。翻譯結果會快取在你的裝置上，避免重複翻譯；可以在設定頁清除快取。朗讀功能使用瀏覽器內建的語音。</p>
+
+    <h2>四、刪除資料</h2>
+    <p>移除 CoCo Translate 就會刪除它儲存的所有資料。</p>
+
+    <h2>五、聯絡方式</h2>
+    <p>有問題請到 <a href="https://github.com/Chocochocococo/CoCo-Translate/issues">GitHub Issues</a> 回報。</p>
+  </article>
+
+  <article id="en" class="policy" lang="en">
+    <h1>Privacy Policy</h1>
+    <p class="updated">Last updated: November 17, 2026</p>
+    <p class="lead">CoCo Translate does not collect, sell or share personal data. The developer runs no servers and receives no data from the extension. There are no analytics, ads or tracking.</p>
+
+    <h2>1. Text sent for translation</h2>
+    <p>To translate, CoCo sends the text you ask it to translate (page paragraphs, selected text, YouTube subtitles or document text) directly from your browser to the translation service you choose in the settings:</p>
+    <ul>
+      <li>Google Translate (default, no key needed)</li>
+      <li>Microsoft Bing Translator (no key needed)</li>
+      <li>Google Cloud Translation or DeepL, using your own API key</li>
+      <li>AI services you set up yourself, such as Ollama (on your computer or ollama.com), OpenRouter, Google Gemini, Groq, Mistral, or any OpenAI-compatible address you enter, using your own API key</li>
+    </ul>
+    <p>English words you look up in the word card are sent to the Free Dictionary API (dictionaryapi.dev).</p>
+    <p>These services handle the data under their own privacy policies. For confidential content, use a local AI model (for example Ollama on your own computer), so the text never leaves your device.</p>
+
+    <h2>2. Pages and files</h2>
+    <p>YouTube subtitles are downloaded from YouTube. Documents opened from a web address are downloaded from that address. Files you open from your computer are read inside your browser and are not uploaded; only their text is sent for translation as described above.</p>
+
+    <h2>3. Data stored on your device</h2>
+    <p>Your settings, API keys, glossary, site list and vocabulary list are stored in your browser's extension storage on your device. They are not synced or sent anywhere. Translations are cached on your device to avoid translating the same text twice; you can clear the cache in the settings. Read-aloud uses your browser's built-in speech engine.</p>
+
+    <h2>4. Removing your data</h2>
+    <p>Uninstalling CoCo Translate deletes all of its stored data.</p>
+
+    <h2>5. Contact</h2>
+    <p>Questions: <a href="https://github.com/Chocochocococo/CoCo-Translate/issues">GitHub Issues</a></p>
+  </article>
+</main>
+
+<footer>
+  <div class="wrap">
+    <a href="./">回到首頁 Home</a>
+    <a href="https://github.com/Chocochocococo/CoCo-Translate">GitHub</a>
+  </div>
+</footer>
+</body>
+</html>

@@ -6,7 +6,6 @@
   "homepage_url": "https://chocochocococo.github.io/CoCo-Translate/",
   "permissions": [
     "storage",
-    "activeTab",
     "contextMenus",
     "tabs",
     "<all_urls>"

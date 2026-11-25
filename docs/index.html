@@ -288,7 +288,7 @@
         <a class="btn primary" href="#install">免費安裝</a>
         <a class="btn ghost" href="#features">看看有什麼功能</a>
       </div>
-      <p class="facts"><span>版本 <span class="mono" data-version>1.8.0.1</span></span><span>開放原始碼</span><span>設定與金鑰只存在你的瀏覽器</span></p>
+      <p class="facts"><span>版本 <span class="mono" data-version>1.8.1.0</span></span><span>開放原始碼</span><span>設定與金鑰只存在你的瀏覽器</span></p>
     </div>
     <figure>
       <img class="shot-light" src="img/popup-light.png" alt="CoCo Translate 的彈出視窗：翻譯此頁按鈕、顯示方式、翻譯來源與各項開關" width="340" height="548">
@@ -407,7 +407,7 @@
               <li>網址列輸入 <span class="mono">chrome://extensions</span>，打開右上角的「開發人員模式」。</li>
               <li>點「載入未封裝項目」，選擇剛才的資料夾。</li>
             </ol>
-            <p class="note">以前手動安裝的版本不會自動更新。改用商店版時，先到設定頁匯出術語表和正規表達式，裝好商店版再匯入；其他設定和 API 金鑰要重新設定一次。</p>
+            <p class="note">以前手動安裝的版本不會自動更新。改用商店版時，先到設定頁匯出術語表、生字本和正規表達式，裝好商店版再匯入；其他設定和 API 金鑰要重新設定一次。</p>
           </details>
         </div>
         <div class="panel">
@@ -470,7 +470,7 @@
             <dt>術語表</dt>
             <dd>固定譯名，可以只套用在特定網站，也能匯出匯入。</dd>
             <dt>生字本</dt>
-            <dd>單字卡收藏的生字，可以匯出到 Anki。</dd>
+            <dd>單字卡收藏的生字，可以匯出到 Anki，也能匯出備份、搬到另一個瀏覽器。</dd>
             <dt>正規表達式</dt>
             <dd>套用在每段譯文上的尋找與取代，例如把「韋步」統一改成「魏布」。</dd>
           </dl>
@@ -609,6 +609,16 @@
         <h2>更新日記</h2>
         <p>從 1.5 開始整個重寫，下面是每一版改了什麼。</p>
       </div>
+
+      <article class="release">
+        <p class="when"><span class="mono">1.8.1.0</span>2026/11/25</p>
+        <div>
+          <ul>
+            <li>增加：生字本可以匯出、匯入備份，例句和來源網頁都會保留，方便搬到另一個瀏覽器或另一台電腦。匯入時會合併，重複的字保留比較新的那一筆。</li>
+            <li>CoCo 上架 Chrome 線上應用程式商店和 Firefox 附加元件商店了，官網的安裝說明改成商店連結。</li>
+          </ul>
+        </div>
+      </article>
 
       <article class="release">
         <p class="when"><span class="mono">1.8.0.1</span>2026/11/17</p>
@@ -861,7 +871,7 @@
 
 <footer>
   <div class="wrap">
-    <span>CoCo Translate <span class="mono" data-version>1.8.0.1</span></span>
+    <span>CoCo Translate <span class="mono" data-version>1.8.1.0</span></span>
     <a href="https://github.com/Chocochocococo/CoCo-Translate">GitHub 原始碼</a>
     <a href="#support">🍫 贊助 CoCo</a>
     <a href="privacy.html">隱私權政策</a>

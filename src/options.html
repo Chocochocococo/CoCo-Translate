@@ -370,10 +370,14 @@
       <p class="description" data-i18n="vocabularyDescription"></p>
       <div class="actions plain">
         <button id="exportAnkiBtn" class="btn" type="button" data-i18n="exportAnki">匯出成 Anki 格式</button>
+        <button id="exportVocabularyBtn" class="btn secondary" type="button" data-i18n="exportBackup">匯出備份</button>
+        <button id="importVocabularyBtn" class="btn secondary" type="button" data-i18n="importBackup">匯入備份</button>
+        <input type="file" id="importVocabularyFile" accept=".json" hidden>
         <button id="clearVocabularyBtn" class="btn danger" type="button" data-i18n="clearAll">全部刪除</button>
         <span id="vocabularyCount" class="hint"></span>
       </div>
       <p class="hint spaced" data-i18n="ankiHint"></p>
+      <p class="hint spaced" data-i18n="vocabularyBackupHint"></p>
       <div class="card">
         <ul id="vocabularyList" class="item-list"></ul>
         <p id="vocabularyEmpty" class="empty" data-i18n="vocabularyEmpty"></p>

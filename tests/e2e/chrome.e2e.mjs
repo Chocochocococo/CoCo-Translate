@@ -640,6 +640,41 @@ try {
     assert.deepEqual(fields.slice(0, 4), ['serendipity', '[譯]serendipity', '/ˌsɛɹ.ənˈdɪp.ɪ.ti/', 'Books are full of serendipity.']);
     assert.equal(fields[5], '名詞 意外發現、機緣巧合、偶然發現珍寶的運氣');
   });
+  const [backupDownload] = await Promise.all([vocabPage.waitForEvent('download'), vocabPage.click('#exportVocabularyBtn')]);
+  const backup = JSON.parse(fs.readFileSync(await backupDownload.path(), 'utf8'));
+  await check('生字本：匯出備份（JSON，保留全部欄位）', async () => {
+    assert.equal(backupDownload.suggestedFilename(), 'coco-vocabulary-backup.json');
+    assert.equal(backup.type, 'vocabulary');
+    assert.equal(backup.items.length, 1);
+    const { vocabulary } = await sw.evaluate(() => chrome.storage.local.get('vocabulary'));
+    assert.deepEqual(backup.items, vocabulary);
+  });
+  await check('生字本：匯入備份會合併，重複的字留比較新的，危險的連結不收', async () => {
+    const saved = backup.items[0];
+    await sw.evaluate(item => chrome.storage.local.set({ vocabulary: [{ ...item, translation: '舊的譯文', addedAt: 1 }] }), saved);
+    const importFile = {
+      app: 'CoCo Translate', type: 'vocabulary', version: 1,
+      items: [
+        { ...saved, word: 'Serendipity', addedAt: saved.addedAt + 1 },
+        { word: 'ephemeral', translation: '短暫的', url: 'javascript:alert(1)', addedAt: 5 },
+        { word: '', translation: '空的不收' },
+        'not an entry'
+      ]
+    };
+    await vocabPage.setInputFiles('#importVocabularyFile', { name: 'backup.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(importFile)) });
+    await vocabPage.waitForFunction(() => document.querySelectorAll('#vocabularyList li').length === 2, null, { timeout: 3000 });
+    const { vocabulary } = await sw.evaluate(() => chrome.storage.local.get('vocabulary'));
+    assert.deepEqual(vocabulary.map(v => v.word), ['Serendipity', 'ephemeral']);
+    assert.equal(vocabulary[0].translation, '[譯]serendipity');
+    assert.equal(vocabulary[1].url, undefined);
+    assert.equal(await vocabPage.$('#vocabularyList a[href^="javascript"]'), null);
+  });
+  await check('生字本：匯入看不懂的檔案會提示', async () => {
+    await vocabPage.setInputFiles('#importVocabularyFile', { name: 'bad.json', mimeType: 'application/json', buffer: Buffer.from('{"hello": 1}') });
+    await vocabPage.waitForFunction(() => /生字本備份/.test(document.body.innerText), null, { timeout: 3000 });
+    const { vocabulary } = await sw.evaluate(() => chrome.storage.local.get('vocabulary'));
+    assert.equal(vocabulary.length, 2);
+  });
   await vocabPage.close();
   await sw.evaluate(() => chrome.storage.local.set({ vocabulary: [] }));
 

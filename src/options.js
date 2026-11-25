@@ -621,6 +621,30 @@ function toAnkiText(vocabulary) {
   return ['#separator:tab', '#html:false', '#columns:Word\tTranslation\tPhonetic\tContext\tSource\tMeanings', ...lines].join('\n') + '\n';
 }
 
+// 生字本備份：匯入的檔案可能是別人給的，每個欄位都檢查一遍，網址只收 http(s)（不然 javascript: 連結點了會執行）
+const VOCABULARY_TEXT_FIELDS = ['translation', 'meanings', 'phonetic', 'context', 'title'];
+function cleanVocabularyItem(item) {
+  if (!item || typeof item.word !== 'string' || !item.word.trim()) return null;
+  const clean = { word: item.word.trim() };
+  VOCABULARY_TEXT_FIELDS.forEach(field => {
+    if (typeof item[field] === 'string' && item[field]) clean[field] = item[field];
+  });
+  if (typeof item.url === 'string' && /^https?:\/\//i.test(item.url)) clean.url = item.url;
+  clean.addedAt = Number.isFinite(item.addedAt) ? item.addedAt : 0;
+  return clean;
+}
+
+// 同一個字（不分大小寫）只留一筆，留比較新的；新的排前面，跟單字卡加進來的順序一樣
+function mergeVocabulary(current, imported) {
+  const byWord = new Map();
+  [...current, ...imported].forEach(item => {
+    const key = item.word.toLowerCase();
+    const existing = byWord.get(key);
+    if (!existing || (item.addedAt || 0) > (existing.addedAt || 0)) byWord.set(key, item);
+  });
+  return [...byWord.values()].sort((a, b) => (b.addedAt || 0) - (a.addedAt || 0));
+}
+
 function initVocabulary() {
   const list = $('vocabularyList');
   let current = [];
@@ -680,6 +704,33 @@ function initVocabulary() {
       return;
     }
     downloadFile('coco-vocabulary.txt', toAnkiText(current), 'text/plain');
+  });
+
+  $('exportVocabularyBtn').addEventListener('click', () => {
+    if (!current.length) {
+      showCustomWarning(t('生字本還是空的。', 'Your vocabulary is empty.'));
+      return;
+    }
+    const backup = { app: 'CoCo Translate', type: 'vocabulary', version: 1, exportedAt: new Date().toISOString(), items: current };
+    downloadFile('coco-vocabulary-backup.json', JSON.stringify(backup, null, 2));
+  });
+
+  // 收備份的 { items: [...] }，也收直接一個陣列
+  bindJsonImport('importVocabularyBtn', 'importVocabularyFile', data => {
+    const items = Array.isArray(data) ? data : data && Array.isArray(data.items) ? data.items : null;
+    const valid = (items || []).map(cleanVocabularyItem).filter(Boolean);
+    if (!valid.length) {
+      showCustomWarning(t('檔案格式不對，請選擇匯出的生字本備份（JSON）。', 'Invalid file. Please choose an exported vocabulary backup (JSON).'));
+      return;
+    }
+    chrome.storage.local.get(['vocabulary'], stored => {
+      const before = (stored.vocabulary || []).length;
+      const merged = mergeVocabulary(stored.vocabulary || [], valid);
+      chrome.storage.local.set({ vocabulary: merged }, () => {
+        const added = merged.length - before;
+        showCustomWarning(t(`已匯入 ${valid.length} 個字，新增 ${added} 個。`, `Imported ${valid.length} words (${added} new).`));
+      });
+    });
   });
 
   $('clearVocabularyBtn').addEventListener('click', () => {

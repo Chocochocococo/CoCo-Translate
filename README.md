@@ -8,6 +8,8 @@
 
 **官網與使用說明：https://chocochocococo.github.io/CoCo-Translate/**
 
+**安裝：[Chrome 線上應用程式商店](https://chromewebstore.google.com/detail/coco-translate/mkfdnigedhamnnhojlheheokpjkhilij)｜[Firefox 附加元件](https://addons.mozilla.org/firefox/addon/coco-translate/)**
+
 隱私權政策：https://chocochocococo.github.io/CoCo-Translate/privacy.html
 
 整頁雙語對照、滑鼠觸發翻譯、單字卡與生字本、YouTube 整句雙語字幕、文件翻譯（PDF、Word、EPUB、TXT、字幕檔）；
@@ -37,9 +39,7 @@ The website and user guide are in Traditional Chinese: https://chocochocococo.gi
 
 Privacy policy: https://chocochocococo.github.io/CoCo-Translate/privacy.html
 
-**Install**: the extension isn't in the browser stores yet. Download the latest version from [Releases](https://github.com/Chocochocococo/CoCo-Translate/releases/latest).
-- Chrome: download the Chrome zip, unzip it, open `chrome://extensions`, turn on Developer mode, and choose "Load unpacked".
-- Firefox: download the xpi, open `about:addons`, click the gear icon, and choose "Install Add-on From File…".
+**Install**: [Chrome Web Store](https://chromewebstore.google.com/detail/coco-translate/mkfdnigedhamnnhojlheheokpjkhilij) · [Firefox Add-ons](https://addons.mozilla.org/firefox/addon/coco-translate/). Store versions update automatically. You can also download the packages from [Releases](https://github.com/Chocochocococo/CoCo-Translate/releases/latest) and install them manually.
 
 **Support**: CoCo is free. If you find it useful, you can buy the author a hot cocoa on [Ko-fi](https://ko-fi.com/chocochocococo).
 
